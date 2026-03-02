@@ -29,8 +29,13 @@ nav:
       - Data Pipeline: architecture/data-pipeline.md
   - LMUPI (Parser):
       - Overview: lmupi/overview.md
+      - Modules Reference: lmupi/modules.md
+      - UI & Tabs Reference: lmupi/ui.md
   - TeleMU (Frontend):
       - Overview: telemu/overview.md
+
+extra_javascript:
+  - https://unpkg.com/mermaid@11/dist/mermaid.min.js
 
 markdown_extensions:
   - pymdownx.highlight:
