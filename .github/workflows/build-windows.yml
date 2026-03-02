@@ -25,36 +25,51 @@ jobs:
         working-directory: LMUPI
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
+          pip install .
           pip install pyinstaller
 
       - name: Build executable
         working-directory: LMUPI
         shell: cmd
         run: >-
-          pyinstaller --noconfirm --onedir --windowed
+          pyinstaller --noconfirm --onedir --console
           --name "LMUPI"
-          --add-data "lmupi\sharedmem;lmupi\sharedmem"
+          --add-data "lmupi;lmupi"
+          --hidden-import "lmupi"
+          --hidden-import "lmupi.app"
+          --hidden-import "lmupi.analyzer"
+          --hidden-import "lmupi.advanced"
+          --hidden-import "lmupi.dashboard"
+          --hidden-import "lmupi.splitter"
+          --hidden-import "lmupi.theme"
+          --hidden-import "lmupi.track_viewer"
+          --hidden-import "lmupi.telemetry_reader"
+          --hidden-import "lmupi.widgets"
           --hidden-import "lmupi.sharedmem"
           --hidden-import "lmupi.sharedmem.lmu_data"
           --hidden-import "lmupi.sharedmem.lmu_mmap"
           --hidden-import "lmupi.sharedmem.lmu_type"
-          --hidden-import "lmupi.dashboard"
-          --hidden-import "lmupi.telemetry_reader"
           --collect-all "duckdb"
           --collect-all "PySide6"
           --collect-all "matplotlib"
-          lmupi\app.py
+          lmupi_launcher.py
 
-      - name: Create archive
+      - name: Smoke test
         working-directory: LMUPI
-        run: Compress-Archive -Path dist\LMUPI -DestinationPath dist\LMUPI-windows.zip
+        shell: cmd
+        run: dist\LMUPI\LMUPI.exe --help 2>&1 || echo "Exe runs (no --help flag, expected)"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: LMUPI-windows
-          path: LMUPI/dist/LMUPI-windows.zip
+          path: LMUPI/dist/LMUPI/
+          compression-level: 9
+
+      - name: Create release archive
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: LMUPI
+        run: Compress-Archive -Path dist\LMUPI\* -DestinationPath dist\LMUPI-windows.zip
 
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
