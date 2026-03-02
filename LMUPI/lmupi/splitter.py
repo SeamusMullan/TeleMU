@@ -122,6 +122,28 @@ def export_query_json(
     conn.execute(f"COPY ({sql}) TO '{output_path}' (FORMAT JSON)")
 
 
+def import_csv(
+    conn: duckdb.DuckDBPyConnection, csv_path: str, table_name: str
+) -> None:
+    """Import a CSV file as a new table in *conn* using DuckDB's read_csv_auto."""
+    escaped_path = csv_path.replace("'", "''")
+    escaped_table = table_name.replace('"', '""')
+    conn.execute(
+        f'CREATE TABLE "{escaped_table}" AS SELECT * FROM read_csv_auto(\'{escaped_path}\')'
+    )
+
+
+def import_json(
+    conn: duckdb.DuckDBPyConnection, json_path: str, table_name: str
+) -> None:
+    """Import a JSON file as a new table in *conn* using DuckDB's read_json_auto."""
+    escaped_path = json_path.replace("'", "''")
+    escaped_table = table_name.replace('"', '""')
+    conn.execute(
+        f'CREATE TABLE "{escaped_table}" AS SELECT * FROM read_json_auto(\'{escaped_path}\')'
+    )
+
+
 _NUMERIC_TYPE_FRAGMENTS = (
     "INT", "FLOAT", "DOUBLE", "DECIMAL", "NUMERIC",
     "BIGINT", "SMALL", "TINY", "HUGEINT", "REAL",

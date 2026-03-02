@@ -40,6 +40,7 @@ class MainWindow(QMainWindow):
 
         self._conn: duckdb.DuckDBPyConnection | None = None
         self._db_path: Path | None = None
+        self._is_in_memory: bool = False
         self._settings = QSettings("LMUPI", "TelemetryExplorer")
 
         self._setup_menu()
@@ -74,6 +75,16 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
 
+        import_csv_act = file_menu.addAction("&Import CSV...")
+        import_csv_act.setShortcut(QKeySequence("Ctrl+I"))
+        import_csv_act.triggered.connect(self._import_csv)
+
+        import_json_act = file_menu.addAction("Import &JSON...")
+        import_json_act.setShortcut(QKeySequence("Ctrl+Shift+I"))
+        import_json_act.triggered.connect(self._import_json)
+
+        file_menu.addSeparator()
+
         quit_act = file_menu.addAction("&Quit")
         quit_act.setShortcut(QKeySequence("Ctrl+Q"))
         quit_act.triggered.connect(self.close)
@@ -95,6 +106,14 @@ class MainWindow(QMainWindow):
 
         json_act = tb.addAction("Export JSON")
         json_act.triggered.connect(self._export_json)
+
+        tb.addSeparator()
+
+        imp_csv_act = tb.addAction("Import CSV")
+        imp_csv_act.triggered.connect(self._import_csv)
+
+        imp_json_act = tb.addAction("Import JSON")
+        imp_json_act.triggered.connect(self._import_json)
 
         tb.addSeparator()
 
@@ -162,7 +181,7 @@ class MainWindow(QMainWindow):
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if event.mimeData().hasUrls():
             for url in event.mimeData().urls():
-                if url.toLocalFile().endswith(".duckdb"):
+                if url.toLocalFile().endswith((".duckdb", ".csv", ".json")):
                     event.acceptProposedAction()
                     return
 
@@ -171,6 +190,12 @@ class MainWindow(QMainWindow):
             path = url.toLocalFile()
             if path.endswith(".duckdb"):
                 self._load_db(Path(path))
+                return
+            elif path.endswith(".csv"):
+                self._do_import("csv", Path(path))
+                return
+            elif path.endswith(".json"):
+                self._do_import("json", Path(path))
                 return
 
     # ── File operations ────────────────────────────────────
@@ -196,6 +221,7 @@ class MainWindow(QMainWindow):
             return
 
         self._db_path = path
+        self._is_in_memory = False
         self._add_recent(path)
 
         tables = splitter.list_tables(self._conn)
@@ -304,6 +330,74 @@ class MainWindow(QMainWindow):
                 self._status.showMessage(f"Exported {table} to {path}")
         except Exception as exc:
             QMessageBox.critical(self, "Export Error", str(exc))
+
+    # ── Import ─────────────────────────────────────────────
+
+    def _import_csv(self) -> None:
+        self._do_import("csv")
+
+    def _import_json(self) -> None:
+        self._do_import("json")
+
+    def _do_import(self, fmt: str, path: Path | None = None) -> None:
+        if path is None:
+            ext = fmt
+            filter_str = f"{ext.upper()} Files (*.{ext});;All Files (*)"
+            p, _ = QFileDialog.getOpenFileName(self, f"Import {ext.upper()}", "", filter_str)
+            if not p:
+                return
+            path = Path(p)
+
+        table_name = path.stem
+
+        # Reuse existing in-memory connection so multiple imports stack
+        if self._conn is not None and self._is_in_memory:
+            conn = self._conn
+            existing = splitter.list_tables(conn)
+            base = table_name
+            i = 1
+            while table_name in existing:
+                table_name = f"{base}_{i}"
+                i += 1
+        else:
+            if self._conn is not None:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+            conn = duckdb.connect(":memory:")
+            self._is_in_memory = True
+
+        try:
+            if fmt == "csv":
+                splitter.import_csv(conn, str(path), table_name)
+            else:
+                splitter.import_json(conn, str(path), table_name)
+        except Exception as exc:
+            QMessageBox.critical(self, "Import Error", f"Could not import file:\n{exc}")
+            return
+
+        self._conn = conn
+        self._db_path = None
+
+        tables = splitter.list_tables(self._conn)
+        self._populate_tree(tables, f"[imported] {path.name}")
+        self._explorer.set_tables(tables)
+        self._sql_tab.set_connection(self._conn)
+        self._analyzer.set_connection(self._conn)
+        self._analyzer.set_tables(tables)
+        self._track_viewer.set_connection(self._conn)
+        self._track_viewer.set_tables(tables)
+        self._advanced.set_connection(self._conn)
+        self._advanced.set_tables(tables)
+
+        if tables:
+            self._explorer.load_table(self._conn, tables[0])
+            self._explorer.select_table(tables[0])
+
+        self._status.showMessage(
+            f"Imported '{path.name}' as table '{table_name}' — {len(tables)} table(s) loaded"
+        )
 
     # ── Misc actions ───────────────────────────────────────
 
