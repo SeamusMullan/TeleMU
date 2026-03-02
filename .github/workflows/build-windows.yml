@@ -1,0 +1,63 @@
+name: Build Windows App
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        working-directory: LMUPI
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+
+      - name: Build executable
+        working-directory: LMUPI
+        shell: cmd
+        run: >-
+          pyinstaller --noconfirm --onedir --windowed
+          --name "LMUPI"
+          --add-data "lmupi\sharedmem;lmupi\sharedmem"
+          --hidden-import "lmupi.sharedmem"
+          --hidden-import "lmupi.sharedmem.lmu_data"
+          --hidden-import "lmupi.sharedmem.lmu_mmap"
+          --hidden-import "lmupi.sharedmem.lmu_type"
+          --hidden-import "lmupi.dashboard"
+          --hidden-import "lmupi.telemetry_reader"
+          --collect-all "duckdb"
+          --collect-all "PySide6"
+          --collect-all "matplotlib"
+          lmupi\app.py
+
+      - name: Create archive
+        working-directory: LMUPI
+        run: Compress-Archive -Path dist\LMUPI -DestinationPath dist\LMUPI-windows.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LMUPI-windows
+          path: LMUPI/dist/LMUPI-windows.zip
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: LMUPI/dist/LMUPI-windows.zip
