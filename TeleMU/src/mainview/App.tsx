@@ -1,115 +1,206 @@
-import { useState } from "react";
+import React, { useCallback } from "react";
+import { AppProvider, useApp, type TabId } from "./store/AppContext";
+import { rpcRequest } from "./hooks/useRPC";
+import { Sidebar } from "./components/Sidebar";
+import { ExplorerTab } from "./components/ExplorerTab";
+import { SqlTab } from "./components/SqlTab";
+import { SignalAnalyzer } from "./components/SignalAnalyzer";
+import { TrackViewer } from "./components/TrackViewer";
+import { AdvancedAnalysis } from "./components/AdvancedAnalysis";
 
-function App() {
-	const [count, setCount] = useState(0);
+const TABS: { id: TabId; label: string }[] = [
+  { id: "explorer", label: "Explorer" },
+  { id: "sql", label: "SQL Query" },
+  { id: "analyzer", label: "Signal Analyzer" },
+  { id: "track", label: "Track Viewer" },
+  { id: "advanced", label: "Advanced" },
+];
 
-	return (
-		<div className="min-h-screen bg-gradient-to-br from-indigo-500 to-purple-600 text-gray-900">
-			<div className="container mx-auto px-4 py-10 max-w-3xl">
-				<h1 className="text-5xl font-bold text-center text-white mb-2 drop-shadow-lg">
-					React + Tailwind + Vite
-				</h1>
-				<p className="text-xl text-center text-white/90 mb-10">
-					A fast Electrobun app with hot module replacement
-				</p>
+function AppInner() {
+  const { state, dispatch } = useApp();
 
-				<div className="bg-white rounded-xl shadow-xl p-8 mb-8">
-					<h2 className="text-2xl font-semibold text-indigo-600 mb-4">
-						Interactive Counter
-					</h2>
-					<p className="mb-4 text-gray-600">
-						Click the button below to test React state. With HMR enabled, you
-						can edit this component and see changes instantly without losing
-						state.
-					</p>
-					<div className="flex items-center gap-4">
-						<button
-							onClick={() => setCount((c) => c + 1)}
-							className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-md hover:shadow-lg"
-						>
-							Count: {count}
-						</button>
-						<button
-							onClick={() => setCount(0)}
-							className="px-4 py-3 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition-colors"
-						>
-							Reset
-						</button>
-					</div>
-				</div>
+  const handleOpen = useCallback(async () => {
+    try {
+      const path = await rpcRequest("openFileDialog");
+      if (!path) return;
+      const result = await rpcRequest("connect", { path });
+      const fileName = path.split("/").pop() ?? path;
+      dispatch({
+        type: "CONNECT",
+        payload: { path, fileName, tables: result.tables },
+      });
 
-				<div className="bg-white rounded-xl shadow-xl p-8 mb-8">
-					<h2 className="text-2xl font-semibold text-indigo-600 mb-4">
-						Getting Started
-					</h2>
-					<ul className="space-y-3 text-gray-700">
-						<li className="flex items-start gap-2">
-							<span className="text-indigo-500 font-bold">1.</span>
-							<span>
-								Run{" "}
-								<code className="bg-gray-100 px-2 py-1 rounded text-sm">
-									bun run dev
-								</code>{" "}
-								for development without HMR
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-indigo-500 font-bold">2.</span>
-							<span>
-								Run{" "}
-								<code className="bg-gray-100 px-2 py-1 rounded text-sm">
-									bun run dev:hmr
-								</code>{" "}
-								for development with hot reload
-							</span>
-						</li>
-						<li className="flex items-start gap-2">
-							<span className="text-indigo-500 font-bold">3.</span>
-							<span>
-								Run{" "}
-								<code className="bg-gray-100 px-2 py-1 rounded text-sm">
-									bun run build
-								</code>{" "}
-								to build for production
-							</span>
-						</li>
-					</ul>
-				</div>
+      // Fetch numeric columns and ts info for all tables
+      const tableNames = result.tables.map((t) => t.name);
+      const numCols = await rpcRequest("allNumericColumns", {
+        tables: tableNames,
+      });
+      dispatch({ type: "SET_NUMERIC_COLUMNS", payload: numCols });
 
-				<div className="bg-white rounded-xl shadow-xl p-8">
-					<h2 className="text-2xl font-semibold text-indigo-600 mb-4">Stack</h2>
-					<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-						<div className="text-center p-4 bg-gray-50 rounded-lg">
-							<div className="text-3xl mb-2">⚡</div>
-							<div className="font-medium">Electrobun</div>
-						</div>
-						<div className="text-center p-4 bg-gray-50 rounded-lg">
-							<div className="text-3xl mb-2">⚛️</div>
-							<div className="font-medium">React</div>
-						</div>
-						<div className="text-center p-4 bg-gray-50 rounded-lg">
-							<div className="text-3xl mb-2">🎨</div>
-							<div className="font-medium">Tailwind</div>
-						</div>
-						<div className="text-center p-4 bg-gray-50 rounded-lg">
-							<div className="text-3xl mb-2">🔥</div>
-							<div className="font-medium">Vite HMR</div>
-						</div>
-					</div>
-				</div>
+      // Check which tables have ts
+      const withTs = new Set<string>();
+      for (const t of tableNames) {
+        const schema = await rpcRequest("tableSchema", { table: t });
+        if (schema.some((c) => c.name === "ts")) withTs.add(t);
+      }
+      dispatch({ type: "SET_TABLES_WITH_TS", payload: withTs });
+    } catch (err) {
+      console.error("Failed to open database:", err);
+    }
+  }, [dispatch]);
 
-				<div className="text-center text-white/80 mt-10 p-6 bg-white/10 rounded-lg backdrop-blur">
-					<p>
-						Edit{" "}
-						<code className="bg-white/20 px-2 py-1 rounded text-sm">
-							src/mainview/App.tsx
-						</code>{" "}
-						and save to see HMR in action
-					</p>
-				</div>
-			</div>
-		</div>
-	);
+  const handleExport = useCallback(
+    async (format: "csv" | "json") => {
+      if (!state.connected || !state.currentTable) return;
+      const ext = format === "csv" ? "csv" : "json";
+      const path = await rpcRequest("saveFileDialog", {
+        defaultName: `${state.currentTable}.${ext}`,
+      });
+      if (!path) return;
+      try {
+        if (format === "csv") {
+          await rpcRequest("exportCsv", {
+            table: state.currentTable,
+            outputPath: path,
+          });
+        } else {
+          await rpcRequest("exportJson", {
+            table: state.currentTable,
+            outputPath: path,
+          });
+        }
+      } catch (err) {
+        console.error(`Export ${format} failed:`, err);
+      }
+    },
+    [state.connected, state.currentTable]
+  );
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Toolbar */}
+      <div className="flex items-center gap-1 px-2 py-1 bg-telemu-bg-light border-b border-telemu-border">
+        <button
+          onClick={handleOpen}
+          className="px-3 py-1 rounded text-telemu-text hover:bg-telemu-bg-lighter hover:text-telemu-accent border border-transparent hover:border-telemu-border text-sm font-medium"
+        >
+          Open
+        </button>
+        <button
+          onClick={() => handleExport("csv")}
+          disabled={!state.connected}
+          className="px-3 py-1 rounded text-telemu-text hover:bg-telemu-bg-lighter hover:text-telemu-accent border border-transparent hover:border-telemu-border text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Export CSV
+        </button>
+        <button
+          onClick={() => handleExport("json")}
+          disabled={!state.connected}
+          className="px-3 py-1 rounded text-telemu-text hover:bg-telemu-bg-lighter hover:text-telemu-accent border border-transparent hover:border-telemu-border text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Export JSON
+        </button>
+        <div className="flex-1" />
+        {state.connected && (
+          <span className="text-telemu-text-dim text-xs truncate max-w-[300px]">
+            {state.dbFileName}
+          </span>
+        )}
+      </div>
+
+      {/* Main area: sidebar + tabs */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        {state.connected && <Sidebar />}
+
+        {/* Tab content area */}
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Tab bar */}
+          {state.connected && (
+            <div className="flex bg-telemu-bg-light border-b border-telemu-border">
+              {TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() =>
+                    dispatch({ type: "SET_TAB", payload: tab.id })
+                  }
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    state.activeTab === tab.id
+                      ? "text-telemu-accent border-telemu-accent bg-telemu-bg"
+                      : "text-telemu-text-dim border-transparent hover:text-telemu-text hover:bg-telemu-bg-lighter"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Tab panels */}
+          <div className="flex-1 overflow-hidden">
+            {!state.connected ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <h1 className="text-2xl font-bold text-telemu-accent mb-2">
+                    TeleMU
+                  </h1>
+                  <p className="text-telemu-text-dim mb-4">
+                    Telemetry Explorer
+                  </p>
+                  <button
+                    onClick={handleOpen}
+                    className="px-6 py-2 bg-telemu-accent text-telemu-text-bright rounded font-medium hover:bg-telemu-accent-hover active:bg-telemu-accent-pressed"
+                  >
+                    Open Database
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div
+                  className={
+                    state.activeTab === "explorer" ? "h-full" : "hidden"
+                  }
+                >
+                  <ExplorerTab />
+                </div>
+                <div
+                  className={state.activeTab === "sql" ? "h-full" : "hidden"}
+                >
+                  <SqlTab />
+                </div>
+                <div
+                  className={
+                    state.activeTab === "analyzer" ? "h-full" : "hidden"
+                  }
+                >
+                  <SignalAnalyzer />
+                </div>
+                <div
+                  className={state.activeTab === "track" ? "h-full" : "hidden"}
+                >
+                  <TrackViewer />
+                </div>
+                <div
+                  className={
+                    state.activeTab === "advanced" ? "h-full" : "hidden"
+                  }
+                >
+                  <AdvancedAnalysis />
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-export default App;
+export default function App() {
+  return (
+    <AppProvider>
+      <AppInner />
+    </AppProvider>
+  );
+}

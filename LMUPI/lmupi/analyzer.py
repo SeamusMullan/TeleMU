@@ -7,7 +7,6 @@ import datetime
 import numpy as np
 import duckdb
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
-from matplotlib.colors import Normalize as plt_Normalize
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -32,16 +31,10 @@ PLOT_TYPES = [
     "Line",
     "Scatter",
     "Histogram",
-    "Track Map",
     "Correlation Matrix",
     "Cross-Correlation",
     "Correlation Finder",
 ]
-
-# Table names we recognise as GPS latitude / longitude (case-insensitive check)
-_LAT_TABLE_NAMES = {"latitude", "lat", "gps_lat", "gps latitude", "gpslat", "gps_latitude"}
-_LON_TABLE_NAMES = {"longitude", "lon", "lng", "gps_lon", "gps longitude", "gpslon", "gpslng", "gps_longitude"}
-_SPEED_TABLE_NAMES = {"speed", "gps speed", "gps_speed", "gpsspeed", "velocity"}
 
 
 def _to_float(val):
@@ -396,12 +389,6 @@ class SignalAnalyzer(QWidget):
             self._canvas.draw()
             return
 
-        if plot_type == "Track Map":
-            self._fig.clear()
-            self._plot_track_map(self._get_selected_signals())
-            self._canvas.draw()
-            return
-
         signals = self._get_selected_signals()
         if not signals:
             self._set_status("Select at least one signal")
@@ -752,156 +739,3 @@ class SignalAnalyzer(QWidget):
         self._set_status(f"Found {len(pairs)} correlation pairs ({len(rows)} rows)")
         apply_plot_theme(self._fig, ax)
 
-    # ── Track Map ──
-
-    def _find_gps_tables(self) -> tuple[str | None, str | None, str | None]:
-        """Search tables by name for lat, lon, and optionally speed.
-
-        Returns (lat_table, lon_table, speed_table). Any may be None.
-        """
-        lat_table = lon_table = speed_table = None
-        for tbl in self._tables:
-            tbl_lower = tbl.lower().strip()
-            if tbl_lower in _LAT_TABLE_NAMES and lat_table is None:
-                lat_table = tbl
-            elif tbl_lower in _LON_TABLE_NAMES and lon_table is None:
-                lon_table = tbl
-            elif tbl_lower in _SPEED_TABLE_NAMES and speed_table is None:
-                speed_table = tbl
-        return lat_table, lon_table, speed_table
-
-    def _plot_track_map(self, signals: dict[str, list[str]] | None = None) -> None:
-        if not self._conn:
-            self._set_status("No database connection")
-            return
-
-        lat_table, lon_table, _ = self._find_gps_tables()
-        if not lat_table or not lon_table:
-            missing = []
-            if not lat_table:
-                missing.append("latitude")
-            if not lon_table:
-                missing.append("longitude")
-            self._set_status(f"No table found for: {', '.join(missing)}")
-            ax = self._fig.add_subplot(111)
-            ax.text(
-                0.5, 0.5,
-                f"Need tables named latitude & longitude\n(found: {', '.join(t for t in self._tables)})",
-                transform=ax.transAxes, ha="center", va="center",
-                color="#d4d4d4", fontsize=11,
-            )
-            apply_plot_theme(self._fig, ax)
-            return
-
-        # Fetch value column from a table
-        def _fetch_value(tbl: str) -> np.ndarray | None:
-            schema = splitter.table_schema(self._conn, tbl)
-            col_names_in_tbl = [col["name"] for col in schema]
-            val_col = None
-            if "value" in col_names_in_tbl:
-                val_col = "value"
-            else:
-                numeric = splitter.numeric_columns(self._conn, tbl)
-                non_ts = [c for c in numeric if c != "ts"]
-                if non_ts:
-                    val_col = non_ts[0]
-            if val_col is None:
-                return None
-            _, rows = splitter.fetch_columns(self._conn, tbl, [val_col])
-            if not rows:
-                return None
-            return np.array([_to_float(r[0]) for r in rows])
-
-        lat = _fetch_value(lat_table)
-        lon = _fetch_value(lon_table)
-        if lat is None or lon is None:
-            self._set_status("Could not read value column from GPS tables")
-            return
-
-        # Align to shortest length
-        n = min(len(lat), len(lon))
-        lat = lat[:n]
-        lon = lon[:n]
-
-        # Drop NaN or zero (uninitialised GPS)
-        valid = ~(np.isnan(lat) | np.isnan(lon) | ((lat == 0) & (lon == 0)))
-        lat = lat[valid]
-        lon = lon[valid]
-
-        if len(lat) < 2:
-            self._set_status("Not enough valid GPS points")
-            return
-
-        # Colour by selected signal (first checked signal wins)
-        color_data = None
-        color_label = None
-        if signals:
-            for tbl, cols in signals.items():
-                # Skip the lat/lon tables themselves
-                if tbl in (lat_table, lon_table):
-                    continue
-                if cols:
-                    raw = _fetch_value(tbl)
-                    if raw is not None:
-                        raw = raw[:n][valid]
-                        if len(raw) == len(lat) and not np.all(np.isnan(raw)):
-                            color_data = raw
-                            color_label = tbl
-                    break
-
-        # Apply sidebar filters to track map data
-        if color_data is not None:
-            track_data = np.column_stack([lat, lon, color_data])
-            track_cols = {"lat": 0, "lon": 1, "color": 2}
-        else:
-            track_data = np.column_stack([lat, lon])
-            track_cols = {"lat": 0, "lon": 1}
-        track_data, track_excluded = self._apply_filters(track_data, track_cols, x_key=None)
-        if len(track_data) < 2:
-            self._set_status("Not enough points after filtering")
-            return
-        lat = track_data[:, 0]
-        lon = track_data[:, 1]
-        if color_data is not None:
-            color_data = track_data[:, 2]
-
-        ax = self._fig.add_subplot(111)
-
-        if color_data is not None:
-            from matplotlib.collections import LineCollection
-
-            points = np.column_stack([lon, lat])
-            segments = np.stack([points[:-1], points[1:]], axis=1)
-            seg_colors = (color_data[:-1] + color_data[1:]) / 2.0
-            vmin, vmax = np.nanmin(seg_colors), np.nanmax(seg_colors)
-            norm = plt_Normalize(vmin, vmax) if vmax > vmin else None
-
-            lc = LineCollection(segments, cmap="plasma", norm=norm, linewidth=2)
-            lc.set_array(seg_colors)
-            ax.add_collection(lc)
-            ax.autoscale_view()
-            cb = self._fig.colorbar(lc, ax=ax, fraction=0.046, pad=0.04)
-            cb.set_label(color_label, color="#d4d4d4", fontsize=9)
-            cb.ax.yaxis.set_tick_params(color="#d4d4d4")
-            for label in cb.ax.yaxis.get_ticklabels():
-                label.set_color("#d4d4d4")
-        else:
-            ax.plot(lon, lat, color=PLOT_COLORS[0], linewidth=1.5, alpha=0.9)
-
-        # Mark start / finish
-        ax.plot(lon[0], lat[0], "o", color="#27ae60", markersize=8, zorder=5, label="Start")
-        ax.plot(lon[-1], lat[-1], "s", color="#d63031", markersize=8, zorder=5, label="Finish")
-
-        ax.set_xlabel("Longitude")
-        ax.set_ylabel("Latitude")
-        title = f"Track Map — colour: {color_label}" if color_label else "Track Map"
-        ax.set_title(title, fontsize=10)
-        ax.set_aspect("equal")
-        ax.legend(loc="upper left", fontsize=8)
-
-        apply_plot_theme(self._fig, ax)
-        self._style_legend()
-        status = f"Track map: {len(lat)} points, {track_excluded} excluded"
-        if color_label:
-            status += f" (colour: {color_label})"
-        self._set_status(status)

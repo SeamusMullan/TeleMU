@@ -1,3 +1,58 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --telemu-bg: #1a1a1a;
+  --telemu-bg-light: #242424;
+  --telemu-bg-lighter: #2e2e2e;
+  --telemu-bg-input: #1e1e1e;
+  --telemu-border: #3a3a3a;
+  --telemu-border-light: #4a4a4a;
+  --telemu-text: #d4d4d4;
+  --telemu-text-dim: #888888;
+  --telemu-text-bright: #f0f0f0;
+  --telemu-accent: #e8751a;
+  --telemu-accent-hover: #f08c3a;
+  --telemu-accent-pressed: #c85f10;
+  --telemu-selection: #3a3020;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--telemu-bg);
+  color: var(--telemu-text);
+  font-family: "Inter", "Segoe UI", "Helvetica Neue", sans-serif;
+  font-size: 13px;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--telemu-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--telemu-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--telemu-border-light);
+}
+
+/* Plotly overrides for dark mode */
+.js-plotly-plot .plotly .modebar {
+  background-color: transparent !important;
+}
+.js-plotly-plot .plotly .modebar-btn path {
+  fill: var(--telemu-text-dim) !important;
+}
+.js-plotly-plot .plotly .modebar-btn:hover path {
+  fill: var(--telemu-accent) !important;
+}

@@ -10,14 +10,18 @@
 		"build:canary": "vite build && electrobun build --env=canary"
 	},
 	"dependencies": {
+		"duckdb": "^1.4.4",
 		"electrobun": "1.14.4",
+		"plotly.js": "^3.4.0",
 		"react": "^18.3.1",
-		"react-dom": "^18.3.1"
+		"react-dom": "^18.3.1",
+		"react-plotly.js": "^2.6.0"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",
 		"@types/react": "^18.3.12",
 		"@types/react-dom": "^18.3.1",
+		"@types/react-plotly.js": "^2.6.4",
 		"@vitejs/plugin-react": "^4.3.4",
 		"autoprefixer": "^10.4.20",
 		"concurrently": "^9.1.0",

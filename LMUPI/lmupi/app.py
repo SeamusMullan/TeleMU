@@ -22,8 +22,10 @@ from PySide6.QtWidgets import (
 )
 
 from lmupi import splitter
+from lmupi.advanced import AdvancedAnalysis
 from lmupi.analyzer import SignalAnalyzer
 from lmupi.theme import DARK_STYLESHEET
+from lmupi.track_viewer import TrackViewer
 from lmupi.widgets import ExplorerTab, SqlTab
 
 MAX_RECENT = 10
@@ -128,6 +130,12 @@ class MainWindow(QMainWindow):
         self._analyzer = SignalAnalyzer()
         self._tabs.addTab(self._analyzer, "Signal Analyzer")
 
+        self._track_viewer = TrackViewer()
+        self._tabs.addTab(self._track_viewer, "Track Viewer")
+
+        self._advanced = AdvancedAnalysis()
+        self._tabs.addTab(self._advanced, "Advanced Analysis")
+
         splitter_widget.addWidget(self._tabs)
         splitter_widget.setSizes([220, 1060])
 
@@ -196,6 +204,10 @@ class MainWindow(QMainWindow):
         self._sql_tab.set_connection(self._conn)
         self._analyzer.set_connection(self._conn)
         self._analyzer.set_tables(tables)
+        self._track_viewer.set_connection(self._conn)
+        self._track_viewer.set_tables(tables)
+        self._advanced.set_connection(self._conn)
+        self._advanced.set_tables(tables)
 
         if tables:
             self._explorer.load_table(self._conn, tables[0])
