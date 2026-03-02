@@ -25,6 +25,7 @@ from lmupi import splitter
 from lmupi.advanced import AdvancedAnalysis
 from lmupi.analyzer import SignalAnalyzer
 from lmupi.theme import DARK_STYLESHEET
+from lmupi.dashboard import LiveDashboard
 from lmupi.track_viewer import TrackViewer
 from lmupi.widgets import ExplorerTab, SqlTab
 
@@ -154,6 +155,9 @@ class MainWindow(QMainWindow):
 
         self._advanced = AdvancedAnalysis()
         self._tabs.addTab(self._advanced, "Advanced Analysis")
+
+        self._dashboard = LiveDashboard()
+        self._tabs.addTab(self._dashboard, "Live Dashboard")
 
         splitter_widget.addWidget(self._tabs)
         splitter_widget.setSizes([220, 1060])
