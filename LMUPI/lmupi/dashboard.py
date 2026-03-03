@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -448,6 +449,9 @@ class LiveDashboard(QWidget):
         # Shared memory reader (created on connect)
         self._reader = None
 
+        # Streaming server (created on first start)
+        self._stream_server = None
+
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -472,6 +476,23 @@ class LiveDashboard(QWidget):
         self._live_btn.setFixedWidth(100)
         self._live_btn.clicked.connect(self._toggle_sim)
         top_row.addWidget(self._live_btn)
+
+        # Streaming server controls
+        top_row.addWidget(self._make_separator())
+
+        self._stream_port_edit = QLineEdit("19740")
+        self._stream_port_edit.setFixedWidth(60)
+        self._stream_port_edit.setToolTip("Streaming port")
+        top_row.addWidget(self._stream_port_edit)
+
+        self._stream_btn = QPushButton("Start Stream")
+        self._stream_btn.setFixedWidth(110)
+        self._stream_btn.clicked.connect(self._toggle_stream)
+        top_row.addWidget(self._stream_btn)
+
+        self._stream_status = QLabel("Stream: off")
+        self._stream_status.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 10px;")
+        top_row.addWidget(self._stream_status)
 
         root.addLayout(top_row)
 
@@ -607,6 +628,11 @@ class LiveDashboard(QWidget):
 
         self.refreshed.emit()
 
+        # Broadcast current channel values to streaming clients
+        if self._stream_server is not None and self._stream_server.isRunning():
+            snapshot = {name: ch.value for name, ch in self._channels.items()}
+            self._stream_server.broadcast_telemetry(snapshot)
+
     # -- Live telemetry connection --
 
     def _toggle_connect(self) -> None:
@@ -721,3 +747,82 @@ class LiveDashboard(QWidget):
                 "1:42.318",
                 ["0:28.441", "0:35.102", "0:38.775"],
             )
+
+    # -- Streaming server --
+
+    @staticmethod
+    def _make_separator() -> QFrame:
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.VLine)
+        sep.setStyleSheet(f"color: {COLORS['border']};")
+        sep.setFixedWidth(2)
+        return sep
+
+    def _toggle_stream(self) -> None:
+        if self._stream_server is not None and self._stream_server.isRunning():
+            self._stop_stream()
+        else:
+            self._start_stream()
+
+    def _start_stream(self) -> None:
+        from lmupi.streaming.server import TelemetryStreamingServer
+
+        port_text = self._stream_port_edit.text().strip()
+        try:
+            port = int(port_text)
+            if not (1024 <= port <= 65535):
+                raise ValueError
+        except ValueError:
+            self._stream_status.setText("Invalid port")
+            self._stream_status.setStyleSheet(f"color: {COLORS['red']}; font-size: 10px;")
+            return
+
+        self._stream_server = TelemetryStreamingServer(port=port, parent=self)
+        self._stream_server.server_started.connect(self._on_stream_started)
+        self._stream_server.server_stopped.connect(self._on_stream_stopped)
+        self._stream_server.client_connected.connect(self._on_stream_client)
+        self._stream_server.client_disconnected.connect(self._on_stream_client)
+        self._stream_server.status_update.connect(self._on_stream_status)
+        self._stream_server.error.connect(self._on_stream_error)
+
+        self._stream_server.start_server()
+        self._stream_btn.setText("Stop Stream")
+        self._stream_port_edit.setEnabled(False)
+
+    def _stop_stream(self) -> None:
+        if self._stream_server is not None:
+            self._stream_server.stop_server()
+            self._stream_server = None
+        self._stream_btn.setText("Start Stream")
+        self._stream_port_edit.setEnabled(True)
+        self._stream_status.setText("Stream: off")
+        self._stream_status.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 10px;")
+
+    def _on_stream_started(self) -> None:
+        self._stream_status.setText("Stream: listening")
+        self._stream_status.setStyleSheet(f"color: {COLORS['green']}; font-size: 10px;")
+
+    def _on_stream_stopped(self) -> None:
+        self._stream_btn.setText("Start Stream")
+        self._stream_port_edit.setEnabled(True)
+        self._stream_status.setText("Stream: off")
+        self._stream_status.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 10px;")
+
+    def _on_stream_client(self, desc: str) -> None:
+        count = self._stream_server.client_count if self._stream_server else 0
+        self._stream_status.setText(f"Stream: {count} client(s)")
+        self._stream_status.setStyleSheet(f"color: {COLORS['green']}; font-size: 10px;")
+
+    def _on_stream_status(self, clients: int, rate: float) -> None:
+        if rate >= 1024:
+            rate_str = f"{rate / 1024:.1f} KB/s"
+        else:
+            rate_str = f"{rate:.0f} B/s"
+        self._stream_status.setText(f"Stream: {clients} client(s) · {rate_str}")
+        self._stream_status.setStyleSheet(f"color: {COLORS['green']}; font-size: 10px;")
+
+    def _on_stream_error(self, msg: str) -> None:
+        self._stream_status.setText(f"Stream error: {msg}")
+        self._stream_status.setStyleSheet(f"color: {COLORS['red']}; font-size: 10px;")
+        self._stream_btn.setText("Start Stream")
+        self._stream_port_edit.setEnabled(True)
