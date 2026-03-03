@@ -78,7 +78,7 @@ class ChannelDescriptor:
     name: str
     type_code: str
     unit: str
-    extractor: Callable[[Any, Any], int | float | bool]
+    extractor: Callable[[Any, Any], int | float | bool] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -571,7 +571,6 @@ class TMUSerializer:
             offset += unit_len
             channels.append(ChannelDescriptor(
                 name=name, type_code=type_code, unit=unit,
-                extractor=lambda t, s: None,  # no extractor for decoded headers
             ))
 
         return metadata, channels, offset

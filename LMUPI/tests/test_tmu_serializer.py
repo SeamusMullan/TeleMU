@@ -34,7 +34,7 @@ def _make_wheel(**overrides):
         mSuspForce=5000.0,
         mBrakeTemp=350.0,
         mBrakePressure=0.8,
-        mRotation=50.0,          # rad/s
+        mRotation=50.0,          # rad/s (serializer converts to °/s)
         mLateralPatchVel=0.0,
         mLongitudinalPatchVel=0.0,
         mLateralGroundVel=0.0,
