@@ -78,3 +78,29 @@ export interface HealthResponse {
   lmu_connected: boolean;
   active_clients: number;
 }
+
+// Convert .tmu → DuckDB
+export interface TmuFileInfo {
+  filename: string;
+  path: string;
+  size_bytes: number;
+}
+
+export interface ConvertRequest {
+  files: string[];
+  output_dir?: string;
+  auto_open: boolean;
+}
+
+export interface ConvertFileResult {
+  filename: string;
+  output: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface ConvertResponse {
+  results: ConvertFileResult[];
+  total: number;
+  converted: number;
+}
