@@ -1,7 +1,6 @@
 """Tests for TMU file format integrity verification."""
 
 import struct
-import tempfile
 import zlib
 from pathlib import Path
 
@@ -31,9 +30,9 @@ def sample_frames() -> list[bytes]:
 
 
 @pytest.fixture
-def tmu_path(sample_frames: list[bytes]) -> Path:
+def tmu_path(tmp_path: Path, sample_frames: list[bytes]) -> Path:
     """Write a valid .tmu file and return its path."""
-    tmp = Path(tempfile.mktemp(suffix=".tmu"))
+    tmp = tmp_path / "test.tmu"
     header = TMUHeader(
         created_at=1700000000.0,
         track_name="Spa-Francorchamps",
@@ -44,8 +43,7 @@ def tmu_path(sample_frames: list[bytes]) -> Path:
     with TMUWriter(tmp, header) as w:
         for f in sample_frames:
             w.write_frame(f)
-    yield tmp
-    tmp.unlink(missing_ok=True)
+    return tmp
 
 
 # ── Round-trip tests ─────────────────────────────────────────────────────────
@@ -220,27 +218,21 @@ def test_repair(tmu_path: Path, sample_frames: list[bytes]):
 # ── Edge cases ───────────────────────────────────────────────────────────────
 
 
-def test_empty_file():
+def test_empty_file(tmp_path: Path):
     """Verification should fail gracefully on a tiny file."""
-    tmp = Path(tempfile.mktemp(suffix=".tmu"))
-    try:
-        tmp.write_bytes(b"tiny")
-        result = verify_file(tmp)
-        assert result.ok is False
-    finally:
-        tmp.unlink(missing_ok=True)
+    tmp = tmp_path / "tiny.tmu"
+    tmp.write_bytes(b"tiny")
+    result = verify_file(tmp)
+    assert result.ok is False
 
 
-def test_bad_magic():
+def test_bad_magic(tmp_path: Path):
     """File with wrong magic should fail verification."""
-    tmp = Path(tempfile.mktemp(suffix=".tmu"))
-    try:
-        tmp.write_bytes(b"BAAD" + b"\x00" * 200)
-        result = verify_file(tmp)
-        assert result.ok is False
-        assert "Bad magic" in result.message
-    finally:
-        tmp.unlink(missing_ok=True)
+    tmp = tmp_path / "bad.tmu"
+    tmp.write_bytes(b"BAAD" + b"\x00" * 200)
+    result = verify_file(tmp)
+    assert result.ok is False
+    assert "Bad magic" in result.message
 
 
 def test_frame_index_out_of_range(tmu_path: Path):
@@ -252,18 +244,15 @@ def test_frame_index_out_of_range(tmu_path: Path):
             r.read_frame(-1)
 
 
-def test_zero_frames():
+def test_zero_frames(tmp_path: Path):
     """A .tmu file with zero frames should still verify."""
-    tmp = Path(tempfile.mktemp(suffix=".tmu"))
-    try:
-        header = TMUHeader(track_name="Empty", vehicle_name="None")
-        with TMUWriter(tmp, header) as w:
-            pass  # no frames
-        result = verify_file(tmp)
-        assert result.ok is True
-        assert result.frame_count == 0
-    finally:
-        tmp.unlink(missing_ok=True)
+    tmp = tmp_path / "empty.tmu"
+    header = TMUHeader(track_name="Empty", vehicle_name="None")
+    with TMUWriter(tmp, header) as w:
+        pass  # no frames
+    result = verify_file(tmp)
+    assert result.ok is True
+    assert result.frame_count == 0
 
 
 # ── CLI tests ────────────────────────────────────────────────────────────────

@@ -344,7 +344,7 @@ def repair_file(
                 frame = reader.read_frame(i)
                 writer.write_frame(frame)
                 recovered += 1
-            except (TMUCorruptionError, Exception):
+            except (TMUCorruptionError, zstd.ZstdError):
                 skipped += 1
 
     reader.close()
