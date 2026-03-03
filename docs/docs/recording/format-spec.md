@@ -273,7 +273,7 @@ Frame payload size: `8 + 8 + 4 = 20 bytes`; total frame size: `8 + 20 = 28 bytes
 
 ## Reading Algorithm
 
-1. Read 181 bytes → parse the fixed header; validate magic bytes.
+1. Read 183 bytes → parse the fixed header; validate magic bytes.
 2. Read `metadata_len` bytes → decode as UTF-8 JSON.
 3. Read `channel_count × 51` bytes → parse channel definitions.
 4. Seek to end − 20 → read footer → get `frame_count` and `index_offset`.
