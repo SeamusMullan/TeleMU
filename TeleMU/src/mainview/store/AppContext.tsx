@@ -6,7 +6,8 @@ export type TabId =
   | "sql"
   | "analyzer"
   | "track"
-  | "advanced";
+  | "advanced"
+  | "live";
 
 interface AppState {
   connected: boolean;

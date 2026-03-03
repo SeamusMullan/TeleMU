@@ -1,10 +1,33 @@
 import { BrowserWindow, BrowserView, Updater, Utils } from "electrobun/bun";
-import type { TeleMURPCSchema } from "../shared/types";
+import type { TeleMURPCSchema, RecordingStatus } from "../shared/types";
 import * as db from "./db";
 import { join } from "path";
+import { statSync } from "fs";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
+
+// ── Recording state ──
+let recordingState: RecordingStatus = {
+  recording: false,
+  path: null,
+  startTime: null,
+  size: 0,
+};
+
+function generateFilename(): string {
+  const now = new Date();
+  const date = now.toISOString().replace(/[:.]/g, "_").replace("T", "_").slice(0, -1);
+  return `track_car_${date}.duckdb`;
+}
+
+function getFileSize(filePath: string): number {
+  try {
+    return statSync(filePath).size;
+  } catch {
+    return 0;
+  }
+}
 
 async function getMainViewUrl(): Promise<string> {
   const channel = await Updater.localInfo.channel();
@@ -109,6 +132,54 @@ const rpc = BrowserView.defineRPC<TeleMURPCSchema>({
 
       exportJson: async (params) => {
         await db.exportJson(params!.outputPath, params!.table, params!.sql);
+      },
+
+      startRecording: async (params) => {
+        if (recordingState.recording) {
+          throw new Error("Recording already in progress");
+        }
+        const filename = params?.filename || generateFilename();
+        const outputDir = params?.outputDir || "~/";
+        const path = join(outputDir, filename);
+
+        recordingState = {
+          recording: true,
+          path,
+          startTime: Date.now(),
+          size: 0,
+        };
+
+        console.log(`[Recording] Started: ${path}`);
+        return { path };
+      },
+
+      stopRecording: async () => {
+        if (!recordingState.recording || !recordingState.path) {
+          throw new Error("No recording in progress");
+        }
+        const path = recordingState.path;
+        const duration = recordingState.startTime
+          ? (Date.now() - recordingState.startTime) / 1000
+          : 0;
+        const size = getFileSize(path);
+
+        console.log(`[Recording] Stopped: ${path} (${duration.toFixed(1)}s, ${size} bytes)`);
+
+        recordingState = {
+          recording: false,
+          path: null,
+          startTime: null,
+          size: 0,
+        };
+
+        return { path, size, duration };
+      },
+
+      getRecordingStatus: async () => {
+        if (recordingState.recording && recordingState.path) {
+          recordingState.size = getFileSize(recordingState.path);
+        }
+        return { ...recordingState };
       },
     },
     messages: {},

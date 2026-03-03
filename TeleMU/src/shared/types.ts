@@ -32,6 +32,13 @@ export interface TableColumnMap {
   [table: string]: string[];
 }
 
+export interface RecordingStatus {
+  recording: boolean;
+  path: string | null;
+  startTime: number | null;
+  size: number;
+}
+
 // ── RPC Schema ──
 
 export interface TeleMURPCSchema extends ElectrobunRPCSchema {
@@ -92,6 +99,18 @@ export interface TeleMURPCSchema extends ElectrobunRPCSchema {
       exportJson: {
         params: { table?: string; sql?: string; outputPath: string };
         response: void;
+      };
+      startRecording: {
+        params: { outputDir?: string; filename?: string };
+        response: { path: string };
+      };
+      stopRecording: {
+        params: undefined;
+        response: { path: string; size: number; duration: number };
+      };
+      getRecordingStatus: {
+        params: undefined;
+        response: RecordingStatus;
       };
     };
     messages: {};

@@ -7,6 +7,7 @@ import { SqlTab } from "./components/SqlTab";
 import { SignalAnalyzer } from "./components/SignalAnalyzer";
 import { TrackViewer } from "./components/TrackViewer";
 import { AdvancedAnalysis } from "./components/AdvancedAnalysis";
+import { LiveDashboard } from "./components/LiveDashboard";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "explorer", label: "Explorer" },
@@ -14,6 +15,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "analyzer", label: "Signal Analyzer" },
   { id: "track", label: "Track Viewer" },
   { id: "advanced", label: "Advanced" },
+  { id: "live", label: "Live Dashboard" },
 ];
 
 function AppInner() {
@@ -187,6 +189,13 @@ function AppInner() {
                   }
                 >
                   <AdvancedAnalysis />
+                </div>
+                <div
+                  className={
+                    state.activeTab === "live" ? "h-full" : "hidden"
+                  }
+                >
+                  <LiveDashboard />
                 </div>
               </>
             )}
