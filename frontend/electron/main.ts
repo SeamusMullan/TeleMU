@@ -30,7 +30,7 @@ function getTrayIcon(): Electron.NativeImage {
   } else if (trayStatus.connected) {
     iconName = "tray-connected.png";
   } else {
-    iconName = "tray-default.png";
+    iconName = "tray-disconnected.png";
   }
   return nativeImage.createFromPath(getIconPath(iconName));
 }

@@ -28,12 +28,14 @@ contextBridge.exposeInMainWorld("telemu", {
 
   /** Listen for tray menu actions sent from the main process. */
   onToggleRecording: (callback: () => void) => {
-    ipcRenderer.on("tray:toggle-recording", () => callback());
-    return () => { ipcRenderer.removeAllListeners("tray:toggle-recording"); };
+    const handler = () => callback();
+    ipcRenderer.on("tray:toggle-recording", handler);
+    return () => { ipcRenderer.off("tray:toggle-recording", handler); };
   },
 
   onToggleConnection: (callback: () => void) => {
-    ipcRenderer.on("tray:toggle-connection", () => callback());
-    return () => { ipcRenderer.removeAllListeners("tray:toggle-connection"); };
+    const handler = () => callback();
+    ipcRenderer.on("tray:toggle-connection", handler);
+    return () => { ipcRenderer.off("tray:toggle-connection", handler); };
   },
 });
