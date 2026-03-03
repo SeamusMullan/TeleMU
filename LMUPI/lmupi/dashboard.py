@@ -770,8 +770,6 @@ class LiveDashboard(QWidget):
 
     def _on_stream_channels(self, specs: list) -> None:
         """Register channels from the server's channel map."""
-        from lmupi.streaming_client import ChannelSpec
-        from lmupi.dashboard import TelemetryChannel
         for spec in specs:
             if spec.name not in self._channels:
                 ch = TelemetryChannel(

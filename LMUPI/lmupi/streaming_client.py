@@ -247,7 +247,7 @@ class StreamingClient(QThread):
 
     # -- Thread entry point -------------------------------------------------
 
-    def run(self) -> None:  # noqa: C901 — linear flow, not complex
+    def run(self) -> None:  # noqa: C901 -- linear flow, not complex
         backoff = _RECONNECT_BASE_S
 
         while self._running:
