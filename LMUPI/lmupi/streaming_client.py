@@ -314,10 +314,18 @@ class StreamingClient(QThread):
         # Reset backoff on successful connection
         # (handled in run() by reaching this point without exception)
 
-        # 2. UDP listener
+        # 2. UDP listener — determine the local address facing the server
+        #    so we don't bind to all network interfaces.
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.connect((self._host, self._udp_port))
+            local_addr = probe.getsockname()[0]
+        finally:
+            probe.close()
+
         udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        udp_sock.bind(("", self._udp_port))
+        udp_sock.bind((local_addr, self._udp_port))
         udp_sock.settimeout(1.0)  # allow periodic _running checks
 
         jitter = JitterBuffer(self._buffer_ms)
