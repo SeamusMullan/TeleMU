@@ -27,6 +27,7 @@ nav:
   - Architecture:
       - Overview: architecture/overview.md
       - Data Pipeline: architecture/data-pipeline.md
+      - Streaming Protocol: architecture/streaming-protocol.md
   - LMUPI (Parser):
       - Overview: lmupi/overview.md
       - Modules Reference: lmupi/modules.md
