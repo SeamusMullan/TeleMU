@@ -3,8 +3,10 @@ import sys
 from datetime import datetime
 
 import httpx
+from PySide6.QtCore import QSettings, QTimer
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QFormLayout,
     QGridLayout,
@@ -109,24 +111,29 @@ class ApiExplorerTab(QWidget):
 
 
 class LovenseTab(QWidget):
-    def __init__(self, sender):
+    def __init__(self, sender, settings: QSettings):
         super().__init__()
         self.sender = sender
+        self.settings = settings
 
         layout = QVBoxLayout()
 
         form = QGridLayout()
-        self.token = QLineEdit()
-        self.uid = QLineEdit()
-        self.domain = QLineEdit()
+        self.token = QLineEdit(str(self.settings.value("lovense/token", "")))
+        self.uid = QLineEdit(str(self.settings.value("lovense/uid", "")))
+        self.domain = QLineEdit(str(self.settings.value("lovense/domain", "")))
         self.port = QSpinBox()
         self.port.setRange(1, 65535)
-        self.port.setValue(30010)
+        self.port.setValue(int(self.settings.value("lovense/https_port", 30010)))
         self.action = QLineEdit("Vibrate:5")
         self.time_sec = QSpinBox()
         self.time_sec.setRange(0, 3600)
         self.time_sec.setValue(2)
         self.toy = QLineEdit()
+        self.auto_connect_startup = QCheckBox("Auto-connect on startup")
+        self.auto_connect_startup.setChecked(
+            str(self.settings.value("lovense/auto_connect_startup", "false")).lower() == "true"
+        )
 
         form.addWidget(QLabel("Token"), 0, 0)
         form.addWidget(self.token, 0, 1)
@@ -142,12 +149,14 @@ class LovenseTab(QWidget):
         form.addWidget(self.time_sec, 2, 3)
         form.addWidget(QLabel("Toy"), 3, 0)
         form.addWidget(self.toy, 3, 1)
+        form.addWidget(self.auto_connect_startup, 3, 2, 1, 2)
         layout.addLayout(form)
 
         buttons = QGridLayout()
         self.status_btn = QPushButton("Status")
         self.resolve_btn = QPushButton("Resolve LAN")
         self.connect_btn = QPushButton("Connect")
+        self.auto_connect_btn = QPushButton("Auto Connect")
         self.toys_btn = QPushButton("Get Toys")
         self.function_btn = QPushButton("Function")
         self.stop_btn = QPushButton("Stop")
@@ -156,14 +165,21 @@ class LovenseTab(QWidget):
         self.status_btn.clicked.connect(self.status)
         self.resolve_btn.clicked.connect(self.resolve_lan)
         self.connect_btn.clicked.connect(self.connect_lan)
+        self.auto_connect_btn.clicked.connect(self.auto_connect)
         self.toys_btn.clicked.connect(self.get_toys)
         self.function_btn.clicked.connect(self.send_function)
         self.stop_btn.clicked.connect(self.stop)
         self.clear_btn.clicked.connect(lambda: self.output.clear())
+        self.token.editingFinished.connect(self.save_settings)
+        self.uid.editingFinished.connect(self.save_settings)
+        self.domain.editingFinished.connect(self.save_settings)
+        self.port.valueChanged.connect(self.save_settings)
+        self.auto_connect_startup.stateChanged.connect(self.save_settings)
 
         buttons.addWidget(self.status_btn, 0, 0)
         buttons.addWidget(self.resolve_btn, 0, 1)
         buttons.addWidget(self.connect_btn, 0, 2)
+        buttons.addWidget(self.auto_connect_btn, 0, 3)
         buttons.addWidget(self.toys_btn, 1, 0)
         buttons.addWidget(self.function_btn, 1, 1)
         buttons.addWidget(self.stop_btn, 1, 2)
@@ -180,6 +196,49 @@ class LovenseTab(QWidget):
         ts = datetime.now().strftime("%H:%M:%S")
         self.output.appendPlainText(f"[{ts}] {text}")
 
+    def save_settings(self):
+        self.settings.setValue("lovense/token", self.token.text().strip())
+        self.settings.setValue("lovense/uid", self.uid.text().strip())
+        self.settings.setValue("lovense/domain", self.domain.text().strip())
+        self.settings.setValue("lovense/https_port", self.port.value())
+        self.settings.setValue(
+            "lovense/auto_connect_startup",
+            "true" if self.auto_connect_startup.isChecked() else "false",
+        )
+
+    def _parse_sender_response(self, response_text):
+        try:
+            header, body = response_text.split("\n", 1)
+            status = int(header.rsplit("->", 1)[1].strip())
+            payload = json.loads(body)
+            return status, payload
+        except Exception:
+            return None, None
+
+    def _extract_domain_port(self, obj):
+        domain = None
+        https_port = None
+
+        def walk(node):
+            nonlocal domain, https_port
+            if isinstance(node, dict):
+                raw_domain = node.get("domain") or node.get("wsDomain")
+                if isinstance(raw_domain, str) and raw_domain.strip():
+                    domain = raw_domain.strip()
+                raw_port = node.get("httpsPort") or node.get("https_port")
+                if isinstance(raw_port, int):
+                    https_port = raw_port
+                elif isinstance(raw_port, str) and raw_port.isdigit():
+                    https_port = int(raw_port)
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item)
+
+        walk(obj)
+        return domain, https_port
+
     def status(self):
         self._log(self.sender("GET", "/api/lovense/status", None))
 
@@ -191,31 +250,44 @@ class LovenseTab(QWidget):
             return
         result = self.sender("POST", "/api/lovense/resolve-lan", {"token": token, "uid": uid})
         self._log(result)
-        try:
-            payload = json.loads(result.split("\n", 1)[1])
-        except Exception:
-            return
-        data = payload.get("data")
-        if isinstance(data, dict):
-            candidate = data.get("domain") or data.get("wsDomain")
-            if isinstance(candidate, str) and candidate:
-                self.domain.setText(candidate)
-            port = data.get("httpsPort")
-            if isinstance(port, int):
-                self.port.setValue(port)
+        status, payload = self._parse_sender_response(result)
+        if status is None or payload is None or status >= 400:
+            return False
+        domain, https_port = self._extract_domain_port(payload)
+        if domain:
+            self.domain.setText(domain)
+        if https_port:
+            self.port.setValue(https_port)
+        self.save_settings()
+        return bool(domain)
 
     def connect_lan(self):
         domain = self.domain.text().strip()
         if not domain:
             QMessageBox.warning(self, "Missing domain", "Domain is required.")
-            return
-        self._log(
-            self.sender(
-                "POST",
-                "/api/lovense/connect",
-                {"domain": domain, "https_port": self.port.value()},
-            )
+            return False
+        result = self.sender(
+            "POST",
+            "/api/lovense/connect",
+            {"domain": domain, "https_port": self.port.value()},
         )
+        self._log(result)
+        status, _payload = self._parse_sender_response(result)
+        self.save_settings()
+        return status is not None and status < 400
+
+    def auto_connect(self):
+        has_domain = bool(self.domain.text().strip())
+        if not has_domain:
+            has_domain = self.resolve_lan()
+        if not has_domain:
+            self._log("Auto-connect could not determine a domain.")
+            return
+        ok = self.connect_lan()
+        if ok:
+            self._log("Auto-connect succeeded.")
+        else:
+            self._log("Auto-connect failed.")
 
     def get_toys(self):
         self._log(self.sender("POST", "/api/lovense/get-toys", {}))
@@ -245,6 +317,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("TeleMU Backend Test UI")
         self.resize(1100, 760)
+        self.settings = QSettings("TeleMU", "BackendTestUI")
 
         root = QWidget()
         self.setCentralWidget(root)
@@ -252,17 +325,27 @@ class MainWindow(QMainWindow):
 
         top = QHBoxLayout()
         top.addWidget(QLabel("Backend Base URL"))
-        self.base_url = QLineEdit("http://127.0.0.1:8000")
+        self.base_url = QLineEdit(str(self.settings.value("backend/base_url", "http://127.0.0.1:8000")))
         self.health_btn = QPushButton("Ping /api/health")
         self.health_btn.clicked.connect(self.ping_health)
+        self.base_url.editingFinished.connect(self.save_settings)
         top.addWidget(self.base_url)
         top.addWidget(self.health_btn)
         layout.addLayout(top)
 
         tabs = QTabWidget()
-        tabs.addTab(LovenseTab(self.send_request), "External API (Lovense)")
+        self.lovense_tab = LovenseTab(self.send_request, self.settings)
+        tabs.addTab(self.lovense_tab, "External API (Lovense)")
         tabs.addTab(ApiExplorerTab(self.send_request), "API Explorer")
         layout.addWidget(tabs)
+        QTimer.singleShot(300, self.auto_connect_on_startup)
+
+    def save_settings(self):
+        self.settings.setValue("backend/base_url", self.base_url.text().strip())
+
+    def auto_connect_on_startup(self):
+        if self.lovense_tab.auto_connect_startup.isChecked():
+            self.lovense_tab.auto_connect()
 
     def send_request(self, method, path, payload):
         base = self.base_url.text().strip().rstrip("/")
