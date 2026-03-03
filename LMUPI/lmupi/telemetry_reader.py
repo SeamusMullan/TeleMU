@@ -12,11 +12,13 @@ Usage:
 
 from __future__ import annotations
 
+import ctypes
 import logging
 import math
 
 from PySide6.QtCore import QThread, Signal
 
+from lmupi.compressed_recorder import CompressedRecorder
 from lmupi.sharedmem.lmu_data import LMUConstants, LMUObjectOut
 from lmupi.sharedmem.lmu_mmap import MMapControl
 
@@ -68,6 +70,9 @@ class TelemetryReader(QThread):
         # Track lap changes for lap info updates
         self._last_lap = -1
 
+        # Optional compressed recording
+        self._recorder: CompressedRecorder | None = None
+
     def start_reading(self) -> None:
         """Start the reader thread."""
         self._running = True
@@ -77,6 +82,29 @@ class TelemetryReader(QThread):
         """Signal the reader to stop and wait for it to finish."""
         self._running = False
         self.wait(2000)
+
+    # ── recording ──────────────────────────────────────────────────────
+
+    def start_recording(self, path: str, *, compressor: str = "lz4", chunk_frames: int = 64) -> None:
+        """Begin recording telemetry frames to a compressed file.
+
+        Args:
+            path: destination file path.
+            compressor: ``"lz4"`` (default) or ``"zstd"``.
+            chunk_frames: frames per compressed chunk.
+        """
+        rec = CompressedRecorder(path, compressor=compressor, chunk_frames=chunk_frames)
+        rec.start()
+        self._recorder = rec
+        logger.info("Recording started → %s", path)
+
+    def stop_recording(self) -> None:
+        """Finalize and close the current recording."""
+        rec = self._recorder
+        if rec is not None:
+            rec.finalize()
+            self._recorder = None
+            logger.info("Recording stopped")
 
     def run(self) -> None:
         """Thread main loop."""
@@ -100,6 +128,7 @@ class TelemetryReader(QThread):
         except Exception as exc:
             self.error.emit(f"Telemetry read error: {exc}")
         finally:
+            self.stop_recording()
             try:
                 self._mmap.close()
             except Exception:
@@ -116,6 +145,13 @@ class TelemetryReader(QThread):
 
         mmap.update()
         data = mmap.data
+
+        # Record raw telemetry snapshot if recording is active
+        if self._recorder is not None:
+            frame_bytes = bytes(ctypes.string_at(
+                ctypes.addressof(data), ctypes.sizeof(data)
+            ))
+            self._recorder.write_frame(frame_bytes)
 
         # Check if game is running
         version = data.generic.gameVersion
