@@ -1,8 +1,9 @@
 import { BrowserWindow, BrowserView, Updater, Utils } from "electrobun/bun";
 import type { TeleMURPCSchema, RecordingStatus } from "../shared/types";
 import * as db from "./db";
-import { join } from "path";
+import { join, basename } from "path";
 import { statSync } from "fs";
+import { homedir } from "os";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -138,8 +139,12 @@ const rpc = BrowserView.defineRPC<TeleMURPCSchema>({
         if (recordingState.recording) {
           throw new Error("Recording already in progress");
         }
-        const filename = params?.filename || generateFilename();
-        const outputDir = params?.outputDir || "~/";
+        const filename = params?.filename
+          ? basename(params.filename)
+          : generateFilename();
+        const outputDir = params?.outputDir === "~/" || !params?.outputDir
+          ? homedir()
+          : params.outputDir;
         const path = join(outputDir, filename);
 
         recordingState = {

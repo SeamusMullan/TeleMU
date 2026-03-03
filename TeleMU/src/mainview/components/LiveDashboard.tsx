@@ -25,23 +25,13 @@ function formatRate(bytesPerSec: number): string {
   return `${(bytesPerSec / (1024 * 1024)).toFixed(2)} MB/s`;
 }
 
-function generateDefaultFilename(): string {
-  const now = new Date();
-  const date = now
-    .toISOString()
-    .replace(/[:.]/g, "_")
-    .replace("T", "_")
-    .slice(0, -1);
-  return `track_car_${date}.duckdb`;
-}
-
 export function LiveDashboard() {
   const [recording, setRecording] = useState(false);
   const [duration, setDuration] = useState(0);
   const [fileSize, setFileSize] = useState(0);
   const [dataRate, setDataRate] = useState(0);
   const [recordingPath, setRecordingPath] = useState<string | null>(null);
-  const [outputDir, setOutputDir] = useState("~/");
+  const [outputDir, setOutputDir] = useState("");
   const [customFilename, setCustomFilename] = useState("");
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,11 +68,9 @@ export function LiveDashboard() {
   const handleStart = useCallback(async () => {
     setError(null);
     try {
-      const filename =
-        customFilename.trim() || generateDefaultFilename();
       const result = await rpcRequest("startRecording", {
-        outputDir,
-        filename,
+        outputDir: outputDir || undefined,
+        filename: customFilename.trim() || undefined,
       });
       setRecordingPath(result.path);
       setRecording(true);
@@ -126,10 +114,8 @@ export function LiveDashboard() {
     try {
       const path = await rpcRequest("openFileDialog");
       if (path) {
-        // Use the directory portion of the selected path
-        const dir = path.includes("/")
-          ? path.substring(0, path.lastIndexOf("/"))
-          : path;
+        const lastSep = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+        const dir = lastSep >= 0 ? path.substring(0, lastSep) : path;
         setOutputDir(dir);
       }
     } catch {
@@ -252,11 +238,11 @@ export function LiveDashboard() {
             onChange={(e) => setCustomFilename(e.target.value)}
             disabled={recording}
             className="flex-1 bg-telemu-bg-input border border-telemu-border rounded px-2 py-1 text-xs text-telemu-text focus:border-telemu-accent outline-none disabled:opacity-50"
-            placeholder={`Auto: ${generateDefaultFilename()}`}
+            placeholder="Auto: track_car_YYYY_MM_DDTHH_MM_SSZ.duckdb"
           />
         </div>
         <p className="text-[10px] text-telemu-text-dim mt-1 ml-[104px]">
-          Leave blank to auto-generate with track_car_date pattern
+          Leave blank to auto-generate (e.g. track_car_2026_03_03T18_30_00Z.duckdb)
         </p>
       </div>
 
