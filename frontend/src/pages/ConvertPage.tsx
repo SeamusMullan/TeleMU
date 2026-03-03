@@ -147,7 +147,7 @@ export default function ConvertPage() {
             className="accent-[var(--color-accent)]"
           />
           <span className="text-sm text-neutral-400">
-            Auto-open converted file in Explorer after export
+            Auto-open converted file in Explorer after conversion
           </span>
         </label>
       </div>

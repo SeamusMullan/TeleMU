@@ -82,7 +82,7 @@ async def convert_tmu(req: ConvertRequest) -> ConvertResponse:
             )
             continue
 
-        if not tmu_path.suffix == ".tmu":
+        if tmu_path.suffix != ".tmu":
             results.append(
                 ConvertFileResult(
                     filename=filename,
