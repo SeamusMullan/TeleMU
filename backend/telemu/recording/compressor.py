@@ -46,21 +46,26 @@ class StreamCompressor:
         chunk_frames: int = 60,
         algorithm: Literal["lz4", "zstd"] = "lz4",
     ) -> None:
-        if isinstance(dest, (str,)):
-            self._fp = open(dest, "wb")  # noqa: SIM115
-            self._owns_fp = True
-        else:
-            self._fp = dest
-            self._owns_fp = False
+        self._owns_fp = False
+        try:
+            if isinstance(dest, (str,)):
+                self._fp = open(dest, "wb")  # noqa: SIM115
+                self._owns_fp = True
+            else:
+                self._fp = dest
 
-        self.algorithm = algorithm
-        self.chunk_frames = chunk_frames
+            self.algorithm = algorithm
+            self.chunk_frames = chunk_frames
 
-        # Chunk index: list of (offset, compressed_size, raw_size, frame_count)
-        self._index: list[dict] = []
-        self._buf = bytearray()
-        self._buffered_frames = 0
-        self._finalized = False
+            # Chunk index: list of (offset, compressed_size, raw_size, frame_count)
+            self._index: list[dict] = []
+            self._buf = bytearray()
+            self._buffered_frames = 0
+            self._finalized = False
+        except Exception:
+            if self._owns_fp:
+                self._fp.close()
+            raise
 
     # ── public API ────────────────────────────────────────────────────────
 
@@ -146,9 +151,8 @@ def read_index(src: str | io.RawIOBase) -> dict:
             raise ValueError("Not a valid TMU compressed file")
         (index_offset,) = struct.unpack("<Q", raw_offset)
         fp.seek(index_offset)
-        index_len = (
-            fp.seek(0, 2) - index_offset - MAGIC_LEN - INDEX_OFFSET_LEN
-        )
+        end_pos = fp.seek(0, 2)
+        index_len = end_pos - index_offset - MAGIC_LEN - INDEX_OFFSET_LEN
         fp.seek(index_offset)
         index_data = fp.read(index_len)
         return json.loads(index_data)
