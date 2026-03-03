@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "pyside6-test-ui"
 version = "0.1.0"
@@ -9,3 +13,6 @@ dependencies = [
 
 [project.scripts]
 telemu-test-ui = "main:main"
+
+[tool.setuptools]
+py-modules = ["main"]
