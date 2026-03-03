@@ -1,2 +1,39 @@
-node_modules/
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+*.spec
+
+# Virtual environments
 .venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# DuckDB
+*.duckdb
+*.duckdb.wal
+
+# MkDocs build output
+docs/site/
+
+# Byte-compiled
+*.so
+
+# Distribution
+*.tar.gz
+*.tar.zst
+*.whl

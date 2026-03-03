@@ -26,10 +26,18 @@ stateDiagram-v2
 
     Empty --> FileDB : Open .duckdb
     Empty --> InMemory : Import CSV or JSON
+    Empty --> Live : Connect LMU (Dashboard tab)
     FileDB --> FileDB : Open another .duckdb
     FileDB --> InMemory : Import CSV or JSON
+    FileDB --> Live : Connect LMU
     InMemory --> InMemory : Import another file
     InMemory --> FileDB : Open .duckdb
+    Live --> FileDB : Open .duckdb
+    Live --> Live : Reconnect LMU
+
+    Live : Live Telemetry Active
+    Live : TelemetryReader polling shared memory
+    Live : Dashboard tab receiving push() updates
 ```
 
 ---
@@ -45,7 +53,7 @@ stateDiagram-v2
 ├──────────────────┬────────────────────────────────────────────────┤
 │  Table Tree      │  Tab Widget                                    │
 │  (220 px)        │  Explorer │ SQL Query │ Signal Analyzer │      │
-│                  │  Track Viewer │ Advanced Analysis              │
+│                  │  Track Viewer │ Advanced │ Live Dashboard       │
 │  Filename.duckdb │                                                │
 │  ├ speed (12 300)│  [Active tab content]                          │
 │  ├ throttle      │                                                │
@@ -523,6 +531,96 @@ flowchart LR
 
 ---
 
+## Tab 6 — Live Dashboard
+
+**Class:** `LiveDashboard` (`dashboard.py`)
+
+```
+┌──────────────────────────────────────────────────────┐
+│  [ Connect LMU ]  [ Start Demo ]  [ Record ]         │
+├──────────────┬───────────────────────────────────────┤
+│  ┌─────────┐ │  ┌───────────┐  ┌───────────┐        │
+│  │  SPEED  │ │  │  THROTTLE │  │  BRAKE    │        │
+│  │  287 ▍▍▍│ │  │  0.82 ▍▍▍ │  │  0.00 ▍▍▍│        │
+│  │  km/h   │ │  │           │  │           │        │
+│  └─────────┘ │  └───────────┘  └───────────┘        │
+│  ┌─────────┐ │  ┌───────────────────────────┐        │
+│  │  RPM    │ │  │  Tyre FL  98.2°C  ~~~~~ │        │
+│  │  8420 ▍▍│ │  │  Tyre FR  97.8°C  ~~~~~ │        │
+│  │         │ │  │  Tyre RL  99.1°C  ~~~~~ │        │
+│  └─────────┘ │  │  Tyre RR  98.5°C  ~~~~~ │        │
+│              │  │  Fuel     45.2 L  ~~~~~ │        │
+│  Lap: 5     │  └───────────────────────────┘        │
+│  Current: 1:42.3│                                    │
+│  Best:    1:41.8│  DRS │ PIT │ FLAG │ TC │ ABS      │
+├──────────────┴───────────────────────────────────────┤
+│  Status: Connected to LMU — 60Hz                      │
+└──────────────────────────────────────────────────────┘
+```
+
+### Layout Structure
+
+```mermaid
+flowchart TD
+    Dashboard["LiveDashboard"]
+    Toolbar["Toolbar: Connect LMU | Start Demo"]
+    Left["Left Column"]
+    Right["Right Column"]
+    Gauges["GaugeWidget × 6"]
+    Sparks["SparkStripWidget × 6"]
+    LapInfo["LapInfoPanel"]
+    Status["StatusRow: DRS PIT FLAG TC ABS"]
+
+    Dashboard --> Toolbar
+    Dashboard --> Left
+    Dashboard --> Right
+    Left --> Gauges
+    Left --> LapInfo
+    Right --> Sparks
+    Right --> Status
+```
+
+### Gauge Types
+
+| Display | Widget | Rendering | Channels |
+|---------|--------|-----------|----------|
+| **Arc Gauge** | `GaugeWidget` | QPainter semicircle arc, value text, unit label, min/max ticks | Speed, RPM, Throttle, Brake, Gear, Steering |
+| **Spark Strip** | `SparkStripWidget` | Label + value text + sparkline canvas with fill-under-curve | Tyre temps (×4), Fuel, Brake Temp |
+| **Lap Info** | `LapInfoPanel` | Fixed 180px card with lap/time labels | Lap number, current time, best time, sectors |
+| **Status Pill** | `StatusRow` | 5 small colored indicator pills | DRS, PIT, FLAG, TC, ABS |
+
+### Warning System
+
+Gauges turn red when the channel value enters a warning range (defined by `warn_lo` / `warn_hi` on `TelemetryChannel`). The `in_warning` property drives the colour change.
+
+### Connection Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Dashboard as LiveDashboard
+    participant Reader as TelemetryReader
+
+    User->>Dashboard: Click "Connect LMU"
+    Dashboard->>Reader: Lazy import + create
+    Dashboard->>Reader: start() (QThread)
+    Reader->>Reader: MMapControl.create(0)
+    Reader-->>Dashboard: connected signal
+    Dashboard->>Dashboard: Status: "Connected"
+
+    loop ~60Hz
+        Reader->>Dashboard: push("Speed", 287.4)
+        Reader->>Dashboard: push("RPM", 8420)
+        Note over Dashboard: 50ms timer refreshes gauges
+    end
+
+    User->>Dashboard: Click "Disconnect" / tab hidden
+    Dashboard->>Reader: requestInterruption()
+    Reader-->>Dashboard: disconnected signal
+```
+
+---
+
 ## Keyboard Shortcuts Reference
 
 ```mermaid
@@ -541,3 +639,14 @@ mindmap
     SQL
       Ctrl+Return Run query
 ```
+
+---
+
+## Agent Notes
+
+- The application state machine now includes a **Live** state for when `TelemetryReader` is active
+- When adding new dashboard widgets, use QPainter (not Matplotlib) for consistency with existing gauges
+- The `push(channel, value)` API is the universal interface for live data — any new data source (playback, streaming) should use it
+- Refresh timers pause when the Dashboard tab is hidden to save CPU
+- Status indicators (DRS, PIT, etc.) are derived in `telemetry_reader.py`, not in the dashboard — the dashboard just receives boolean toggles
+- See [Modules Reference](modules.md) for class-level details on `LiveDashboard`, `TelemetryReader`, and `MMapControl`

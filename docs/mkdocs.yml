@@ -1,5 +1,5 @@
 site_name: TeleMU
-site_description: Telemetry Analysis Engine for Le Mans Ultimate
+site_description: Telemetry Analysis Platform for Le Mans Ultimate
 site_url: ""
 
 theme:
@@ -18,21 +18,35 @@ theme:
         icon: material/brightness-7
         name: Switch to dark mode
   features:
+    - navigation.tabs
     - navigation.sections
     - navigation.expand
+    - toc.integrate
     - content.code.copy
 
 nav:
   - Home: index.md
   - Architecture:
-      - Overview: architecture/overview.md
+      - System Overview: architecture/overview.md
       - Data Pipeline: architecture/data-pipeline.md
-  - LMUPI (Parser):
+  - Shared Memory:
+      - Overview: shared-memory/overview.md
+      - Data Structures: shared-memory/data-structures.md
+  - Recording:
+      - Overview: recording/overview.md
+      - Playback & Conversion: recording/playback.md
+  - Streaming:
+      - Overview: streaming/overview.md
+      - Protocol Spec: streaming/protocol.md
+  - Race Engineer:
+      - Overview: race-engineer/overview.md
+      - Tool Specs: race-engineer/tools.md
+  - LMUPI App:
       - Overview: lmupi/overview.md
       - Modules Reference: lmupi/modules.md
       - UI & Tabs Reference: lmupi/ui.md
-  - TeleMU (Frontend):
-      - Overview: telemu/overview.md
+  - Contributing:
+      - Agent Guide: contributing/agent-guide.md
 
 extra_javascript:
   - https://unpkg.com/mermaid@11/dist/mermaid.min.js

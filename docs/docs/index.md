@@ -1,29 +1,75 @@
 # TeleMU
 
-**Telemetry Analysis Engine for Le Mans Ultimate**
+**Telemetry Analysis Platform for Le Mans Ultimate**
 
-TeleMU is a telemetry analysis toolchain for [Le Mans Ultimate](https://www.lemansvirtual.com/). It ingests `.duckdb` telemetry files exported by LMU, parses and organizes the data via a Python backend, and presents it through an Electrobun desktop application.
+TeleMU is a Python-based telemetry platform for [Le Mans Ultimate](https://www.lemansvirtual.com/). It combines post-session analysis of `.duckdb` telemetry files with live shared-memory access for real-time dashboards, session recording, LAN streaming, and race engineering tools.
 
-## Project Structure
+## Architecture at a Glance
 
+```mermaid
+graph LR
+    LMU["LMU Game"] -->|shared memory| SM["Shared Memory Layer"]
+    SM --> Dashboard["Live Dashboard"]
+    SM --> Recorder["Session Recorder"]
+    SM --> Streamer["LAN Streamer"]
+    DDB[".duckdb files"] --> Splitter["splitter.py"]
+    Splitter --> Explorer["Explorer Tab"]
+    Splitter --> SQL["SQL Tab"]
+    Splitter --> Analyzer["Signal Analyzer"]
+    Splitter --> Track["Track Viewer"]
+    Splitter --> Advanced["Advanced Analysis"]
+
+    style Recorder stroke-dasharray: 5 5
+    style Streamer stroke-dasharray: 5 5
 ```
-TeleMU/
-├── LMUPI/          # Python parser & data pipeline (uv project)
-├── TeleMU/         # Electrobun desktop frontend
-└── docs/           # This documentation (MKDocs + Material)
-```
+
+<small>Dashed borders = planned subsystems</small>
 
 ## Components
 
-| Component | Stack | Role |
-|-----------|-------|------|
-| **LMUPI** | Python, DuckDB, NumPy, SciPy, Matplotlib | Parse `.duckdb` telemetry files, split and organize data |
-| **TeleMU** | Electrobun, TypeScript, Tailwind | Desktop UI for viewing parsed telemetry |
-| **docs** | MKDocs Material | Project documentation |
+| Component | Role |
+|-----------|------|
+| **Shared Memory** | ctypes mapping of LMU's `SharedMemoryInterface`, platform mmap abstraction |
+| **Live Dashboard** | Real-time gauges, sparklines, lap info, status indicators |
+| **Post-Session Analysis** | 6 tabs: Explorer, SQL, Signal Analyzer, Track Viewer, Advanced Analysis, Dashboard |
+| **Recording** | Capture live sessions to `.tmu` files for replay *(planned)* |
+| **Streaming** | Stream telemetry over LAN to a race engineer *(planned)* |
+| **Race Engineer** | Strategy tools: fuel, tyres, gaps, stints, pit timing *(planned)* |
 
-## Quick Links
+## Tech Stack
 
-- [Architecture Overview](architecture/overview.md)
-- [Data Pipeline](architecture/data-pipeline.md)
-- [LMUPI Parser](lmupi/overview.md)
-- [TeleMU Frontend](telemu/overview.md)
+| Layer | Technology |
+|-------|-----------|
+| UI Framework | PySide6 / Qt6 |
+| Data Engine | DuckDB (read-only `.duckdb` access) |
+| Analysis | NumPy, SciPy, Matplotlib |
+| Live Data | ctypes shared memory (`LMU_Data`) |
+| Package Manager | uv |
+| Docs | MkDocs Material |
+
+## Quick Start
+
+```bash
+cd LMUPI
+uv sync
+uv run lmupi
+```
+
+## Documentation Map
+
+| Section | What You'll Find |
+|---------|-----------------|
+| [Architecture Overview](architecture/overview.md) | C4 system context and container diagrams |
+| [Data Pipeline](architecture/data-pipeline.md) | End-to-end data flow for all subsystems |
+| [Shared Memory](shared-memory/overview.md) | MMapControl interface, access modes |
+| [Data Structures](shared-memory/data-structures.md) | LMU shared memory field reference |
+| [Recording](recording/overview.md) | `.tmu` format spec and recorder design |
+| [Playback](recording/playback.md) | Replay and DuckDB conversion |
+| [Streaming](streaming/overview.md) | LAN streaming architecture |
+| [Protocol Spec](streaming/protocol.md) | Wire formats and sequence diagrams |
+| [Race Engineer](race-engineer/overview.md) | Strategy engine architecture |
+| [Tool Specs](race-engineer/tools.md) | Per-tool specifications |
+| [LMUPI Overview](lmupi/overview.md) | App architecture and module graph |
+| [Modules Reference](lmupi/modules.md) | Class and function reference |
+| [UI & Tabs](lmupi/ui.md) | Tab layout, keyboard shortcuts |
+| [Agent Guide](contributing/agent-guide.md) | Reading order and patterns for LLM agents |

@@ -58,10 +58,14 @@ C4Container
         Container(analyzer, "analyzer.py", "NumPy / Matplotlib", "SignalAnalyzer — 6 plot types including correlation tools")
         Container(advanced, "advanced.py", "NumPy / SciPy / Matplotlib", "AdvancedAnalysis — Derived Signal, Lap Comparison, FFT, Rolling Stats")
         Container(track, "track_viewer.py", "Matplotlib", "TrackViewer — GPS track map with colour-by-signal overlay")
+        Container(dashboard, "dashboard.py", "QPainter / PySide6", "LiveDashboard — real-time gauges, sparklines, lap info, status indicators")
+        Container(reader, "telemetry_reader.py", "QThread", "TelemetryReader — polls LMU shared memory at ~60Hz")
+        Container(sharedmem, "sharedmem/", "ctypes / mmap", "LMU shared memory mapping — lmu_data.py, lmu_mmap.py, lmu_type.py")
         Container(theme, "theme.py", "PySide6 / Matplotlib", "DARK_STYLESHEET, PLOT_COLORS palette, apply_plot_theme()")
     }
 
     SystemDb_Ext(db, "DuckDB File", ".duckdb telemetry database (read-only)")
+    System_Ext(lmu, "LMU Game", "Shared memory: LMU_Data")
 
     Rel(user, app, "Interacts with", "Qt events / keyboard shortcuts")
     Rel(app, splitter, "Delegates all DB operations to")
@@ -69,12 +73,16 @@ C4Container
     Rel(app, analyzer, "Embeds SignalAnalyzer tab")
     Rel(app, advanced, "Embeds AdvancedAnalysis tab")
     Rel(app, track, "Embeds TrackViewer tab")
+    Rel(app, dashboard, "Embeds LiveDashboard tab")
     Rel(app, theme, "Applies DARK_STYLESHEET at startup")
     Rel(widgets, splitter, "Queries schema, stats, data through")
     Rel(analyzer, splitter, "Fetches signal data through")
     Rel(advanced, splitter, "Fetches signal data through")
     Rel(track, splitter, "Fetches GPS data through")
     Rel(splitter, db, "Reads (read-only)", "DuckDB SQL")
+    Rel(lmu, sharedmem, "Writes telemetry structs")
+    Rel(sharedmem, reader, "ctypes structs via MMapControl")
+    Rel(reader, dashboard, "push(channel, value)")
 ```
 
 ---
@@ -95,7 +103,13 @@ LMUPI/
     ├── analyzer.py          # Signal Analyzer tab (6 plot types)
     ├── advanced.py          # Advanced Analysis tab (4 analysis types)
     ├── track_viewer.py      # Track Viewer tab (GPS map)
-    └── theme.py             # Dark stylesheet, plot color palette, plot theming
+    ├── dashboard.py         # Live Dashboard tab (gauges, sparklines, status)
+    ├── telemetry_reader.py  # QThread polling LMU shared memory (~60Hz)
+    ├── theme.py             # Dark stylesheet, plot color palette, plot theming
+    └── sharedmem/           # LMU shared memory layer
+        ├── lmu_data.py      # ctypes struct definitions
+        ├── lmu_mmap.py      # MMapControl — platform mmap abstraction
+        └── lmu_type.py      # Type-annotation stubs for IDE support
 ```
 
 ---
@@ -112,6 +126,9 @@ graph TD
     analyzer["analyzer.py<br/><b>SignalAnalyzer</b>"]
     advanced["advanced.py<br/><b>AdvancedAnalysis</b>"]
     track["track_viewer.py<br/><b>TrackViewer</b>"]
+    dashboard["dashboard.py<br/><b>LiveDashboard</b>"]
+    reader["telemetry_reader.py<br/><b>TelemetryReader</b>"]
+    sharedmem["sharedmem/<br/><b>MMapControl + Structs</b>"]
 
     main --> app
     app --> splitter
@@ -120,6 +137,7 @@ graph TD
     app --> analyzer
     app --> advanced
     app --> track
+    app --> dashboard
 
     widgets --> splitter
     analyzer --> splitter
@@ -131,9 +149,15 @@ graph TD
     track --> analyzer
     track --> theme
 
+    dashboard --> reader
+    reader --> sharedmem
+
     style splitter fill:#e8751a,color:#fff,stroke:#c05a00
     style theme fill:#2e2e2e,color:#d4d4d4,stroke:#555
     style main fill:#1a1a1a,color:#d4d4d4,stroke:#555
+    style dashboard fill:#00bcd4,color:#000,stroke:#008ba3
+    style reader fill:#00bcd4,color:#000,stroke:#008ba3
+    style sharedmem fill:#00bcd4,color:#000,stroke:#008ba3
 ```
 
 !!! info ""
@@ -262,7 +286,7 @@ flowchart LR
 
 ## UI Tabs
 
-LMUPI has five tabs arranged in a `QTabWidget` on the right side of the main splitter:
+LMUPI has six tabs arranged in a `QTabWidget` on the right side of the main splitter:
 
 ```mermaid
 graph LR
@@ -275,6 +299,7 @@ graph LR
     T3["Signal Analyzer<br/>SignalAnalyzer"]
     T4["Track Viewer<br/>TrackViewer"]
     T5["Advanced Analysis<br/>AdvancedAnalysis"]
+    T6["Live Dashboard<br/>LiveDashboard"]
 
     MW --> TT
     MW --> TW
@@ -283,12 +308,14 @@ graph LR
     TW --> T3
     TW --> T4
     TW --> T5
+    TW --> T6
 
     style T1 fill:#e8751a,color:#fff,stroke:none
     style T2 fill:#f5a623,color:#000,stroke:none
     style T3 fill:#00bcd4,color:#000,stroke:none
     style T4 fill:#27ae60,color:#fff,stroke:none
     style T5 fill:#e040fb,color:#fff,stroke:none
+    style T6 fill:#4fc3f7,color:#000,stroke:none
 ```
 
 | Tab | Class | Module | Purpose |
@@ -298,6 +325,7 @@ graph LR
 | **Signal Analyzer** | `SignalAnalyzer` | `analyzer.py` | Multi-signal comparison with 6 plot types |
 | **Track Viewer** | `TrackViewer` | `track_viewer.py` | 2D GPS track map with colour-by-signal |
 | **Advanced Analysis** | `AdvancedAnalysis` | `advanced.py` | Derived signals, lap comparison, FFT, rolling statistics |
+| **Live Dashboard** | `LiveDashboard` | `dashboard.py` | Real-time gauges, sparklines, lap info, status indicators |
 
 See [UI & Tabs Reference](ui.md) for per-tab documentation.
 
@@ -336,3 +364,14 @@ flowchart TD
 | `Ctrl+G` | Switch to Signal Analyzer tab |
 | `Ctrl+Return` | Run SQL query (while in SQL tab) |
 | `Ctrl+Q` | Quit |
+
+---
+
+## Agent Notes
+
+- The C4 container diagram above is the canonical reference for LMUPI's internal structure
+- `splitter.py` is the **sole DuckDB gateway** — never import `duckdb` in other modules
+- `TelemetryReader` pushes data to `LiveDashboard` via `push(channel, value)` — new live-data consumers should follow this pattern
+- When adding a new tab, create it as a `QWidget` subclass and wire it in `app.py._setup_ui()`
+- The shared memory layer is documented in detail at [Shared Memory Overview](../shared-memory/overview.md)
+- See [Architecture Overview](../architecture/overview.md) for how LMUPI fits into the broader TeleMU system

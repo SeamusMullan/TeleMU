@@ -54,12 +54,36 @@ classDiagram
         +_plot_track_map(signals)
     }
 
+    class LiveDashboard {
+        +register_channel(channel, display)
+        +push(channel_name, value)
+        +_refresh_timer: QTimer
+    }
+
+    class TelemetryReader {
+        +Signal connected
+        +Signal disconnected
+        +Signal error
+        +run()
+        +_poll_once()
+    }
+
+    class MMapControl {
+        +data: LMUObjectOut
+        +create(access_mode)
+        +update()
+        +close()
+    }
+
     MainWindow *-- ExplorerTab
     MainWindow *-- SqlTab
     MainWindow *-- SignalAnalyzer
     MainWindow *-- AdvancedAnalysis
     MainWindow *-- TrackViewer
+    MainWindow *-- LiveDashboard
     ExplorerTab *-- FilterBar
+    LiveDashboard o-- TelemetryReader
+    TelemetryReader o-- MMapControl
 ```
 
 ---
@@ -797,3 +821,153 @@ mindmap
     QComboBox selection color
     QTableWidget selection color
 ```
+
+---
+
+## `dashboard.py` — Live Dashboard
+
+**Class: `LiveDashboard(QWidget)` — real-time telemetry display with gauges, sparklines, lap info, and status indicators.**
+
+### Widget Components
+
+| Widget | Class | Rendering | Purpose |
+|--------|-------|-----------|---------|
+| **Gauge** | `GaugeWidget` | QPainter arc | Speed, RPM, Throttle, Brake, Gear, Steering |
+| **Sparkline** | `SparkStripWidget` | QPainter line + fill | Tyre temps, Fuel, Brake temp |
+| **Lap Info** | `LapInfoPanel` | QLabels | Lap number, current/best lap time, sector times |
+| **Status Row** | `StatusRow` | Colored pills | DRS, PIT, FLAG, TC, ABS indicators |
+
+### Data Flow
+
+```mermaid
+sequenceDiagram
+    participant Reader as TelemetryReader
+    participant Dashboard as LiveDashboard
+    participant Channel as TelemetryChannel
+    participant Widget as GaugeWidget / SparkStripWidget
+
+    Reader->>Dashboard: push("Speed", 287.4)
+    Dashboard->>Channel: history.append(287.4)
+    Channel->>Channel: dirty = True
+    Note over Dashboard: 50ms refresh timer fires
+    Dashboard->>Channel: Check dirty flag
+    Channel-->>Dashboard: dirty = True
+    Dashboard->>Widget: update_value(287.4)
+    Widget->>Widget: QPainter repaint
+```
+
+### Channel System
+
+`TelemetryChannel` is a dataclass holding per-channel state:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `name` | str | Channel identifier (e.g. "Speed") |
+| `unit` | str | Display unit (e.g. "km/h") |
+| `min_val` / `max_val` | float | Gauge range |
+| `warn_lo` / `warn_hi` | float | Warning thresholds |
+| `history` | deque(200) | Ring buffer for sparklines |
+| `dirty` | bool | Whether value changed since last refresh |
+
+### Refresh Timing
+
+- **Gauges**: refresh every 50ms (20 fps)
+- **Sparklines**: refresh every 200ms (every 4th gauge tick)
+- **Timers pause** when the Dashboard tab is not visible
+
+### Pre-registered Channels
+
+Gauges: Speed, RPM, Throttle, Brake, Gear, Steering
+
+Sparklines: Tyre FL, Tyre FR, Tyre RL, Tyre RR, Fuel, Brake Temp
+
+### Public API
+
+```python
+def register_channel(self, channel: TelemetryChannel, display: str = "gauge") -> None:
+    """Register a new channel. display: 'gauge' or 'spark'"""
+
+def push(self, channel_name: str, value: float) -> None:
+    """Push a new value for a channel (called from TelemetryReader)"""
+```
+
+### Demo Mode
+
+The dashboard includes a "Start Demo" button that generates simulated telemetry for testing without LMU running. The "Connect LMU" button lazy-imports `TelemetryReader` and starts the shared memory connection.
+
+---
+
+## `telemetry_reader.py` — Telemetry Reader
+
+**Class: `TelemetryReader(QThread)` — background thread that polls LMU shared memory at ~60Hz and pushes values to the dashboard.**
+
+### Signals
+
+| Signal | Payload | When |
+|--------|---------|------|
+| `connected` | — | Successfully opened shared memory |
+| `disconnected` | — | Shared memory closed (thread stopping) |
+| `error` | `str` | Exception during polling |
+
+### Run Loop
+
+```mermaid
+flowchart TD
+    Start["run()"] --> Open["MMapControl.create(access_mode=0)"]
+    Open --> Emit["Emit connected"]
+    Emit --> Loop{"_is_running?"}
+    Loop -->|Yes| Poll["_poll_once()"]
+    Poll --> Sleep["msleep(16)"]
+    Sleep --> Loop
+    Loop -->|No| Close["MMapControl.close()"]
+    Close --> Disc["Emit disconnected"]
+```
+
+### `_poll_once()` — Data Extraction
+
+Each poll cycle reads the player's vehicle data and pushes to the dashboard:
+
+| Channel | Source | Conversion |
+|---------|--------|-----------|
+| Speed | `mLocalVel` (LMUVect3) | `sqrt(x² + y² + z²) × 3.6` → km/h |
+| RPM | `mEngineRPM` | Direct |
+| Throttle | `mUnfilteredThrottle` | Direct (0.0–1.0) |
+| Brake | `mUnfilteredBrake` | Direct (0.0–1.0) |
+| Gear | `mGear` | Direct (-1 to N) |
+| Steering | `mUnfilteredSteering` | Direct (-1.0 to 1.0) |
+| Tyre FL/FR/RL/RR | `mWheels[i].mTemperature[1]` | Centre reading, Kelvin → °C |
+| Fuel | `mFuel` | Direct (litres) |
+| Brake Temp | `mWheels[0..3].mBrakeTemp` | Average of 4 wheels (°C) |
+
+### Status Indicators
+
+| Indicator | Source | Logic |
+|-----------|--------|-------|
+| DRS | `vs.mDRSState` | Direct boolean |
+| PIT | `vs.mInPits` | Direct boolean |
+| FLAG | `vs.mFlag` | Non-zero = active |
+| TC | Throttle delta | `mUnfilteredThrottle - mFilteredThrottle > 0.05` |
+| ABS | Brake delta | `mUnfilteredBrake - mFilteredBrake > 0.05` |
+
+### Player Vehicle Selection
+
+The reader uses `telemetry.playerVehicleIdx` to index into both `telemInfo[idx]` and `vehScoringInfo[idx]`. It guards against the game not running by checking `data.generic.gameVersion != 0`.
+
+---
+
+## `sharedmem/` — Shared Memory Layer
+
+See dedicated documentation:
+
+- [Shared Memory Overview](../shared-memory/overview.md) — MMapControl interface, access modes, data gating
+- [Data Structures](../shared-memory/data-structures.md) — complete field reference for all LMU structs
+
+---
+
+## Agent Notes
+
+- When adding a new module, follow the patterns above — splitter for DuckDB, QThread for background I/O, QPainter for custom widgets
+- The class diagram at the top of this page is the canonical reference for module relationships
+- `dashboard.py` and `telemetry_reader.py` are the templates for any new live-data consumer
+- All modules use the dark theme from `theme.py` — use `PLOT_COLORS` for any new visualisations
+- The `sharedmem/` package should only be accessed through `MMapControl`, never directly via `mmap`

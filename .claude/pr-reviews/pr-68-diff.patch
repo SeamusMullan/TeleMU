@@ -1,0 +1,767 @@
+diff --git a/LMUPI/lmupi/__pycache__/__init__.cpython-312.pyc b/LMUPI/lmupi/__pycache__/__init__.cpython-312.pyc
+new file mode 100644
+index 0000000..3ca182e
+Binary files /dev/null and b/LMUPI/lmupi/__pycache__/__init__.cpython-312.pyc differ
+diff --git a/LMUPI/lmupi/__pycache__/streaming_client.cpython-312.pyc b/LMUPI/lmupi/__pycache__/streaming_client.cpython-312.pyc
+new file mode 100644
+index 0000000..d1663ee
+Binary files /dev/null and b/LMUPI/lmupi/__pycache__/streaming_client.cpython-312.pyc differ
+diff --git a/LMUPI/lmupi/dashboard.py b/LMUPI/lmupi/dashboard.py
+index c3a7d69..7904b0f 100644
+--- a/LMUPI/lmupi/dashboard.py
++++ b/LMUPI/lmupi/dashboard.py
+@@ -9,13 +9,18 @@
+ from PySide6.QtCore import Qt, QTimer, QRectF, QPointF, Signal
+ from PySide6.QtGui import QPainter, QPen, QColor, QFont, QPainterPath, QConicalGradient, QBrush
+ from PySide6.QtWidgets import (
++    QDialog,
++    QDialogButtonBox,
++    QFormLayout,
+     QFrame,
+     QGridLayout,
+     QHBoxLayout,
+     QLabel,
++    QLineEdit,
+     QPushButton,
+     QScrollArea,
+     QSizePolicy,
++    QSpinBox,
+     QVBoxLayout,
+     QWidget,
+ )
+@@ -25,6 +30,9 @@
+ # Lazy import to avoid hard dependency on sharedmem (Windows-only mmap names)
+ TelemetryReader = None  # populated on first connect attempt
+ 
++# Lazy import for streaming client (avoids import at module scope)
++StreamingClient = None  # populated on first stream connect attempt
++
+ # ---------------------------------------------------------------------------
+ # Data model
+ # ---------------------------------------------------------------------------
+@@ -448,6 +456,9 @@ def __init__(self, parent: QWidget | None = None, refresh_rate_ms: int = 50) ->
+         # Shared memory reader (created on connect)
+         self._reader = None
+ 
++        # Streaming client (created on stream connect)
++        self._stream_client = None
++
+     def _build_ui(self) -> None:
+         root = QVBoxLayout(self)
+         root.setContentsMargins(8, 8, 8, 8)
+@@ -468,6 +479,11 @@ def _build_ui(self) -> None:
+         self._conn_status.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 10px;")
+         top_row.addWidget(self._conn_status)
+ 
++        self._stream_btn = QPushButton("Connect Stream")
++        self._stream_btn.setFixedWidth(120)
++        self._stream_btn.clicked.connect(self._toggle_stream)
++        top_row.addWidget(self._stream_btn)
++
+         self._live_btn = QPushButton("Start Demo")
+         self._live_btn.setFixedWidth(100)
+         self._live_btn.clicked.connect(self._toggle_sim)
+@@ -664,6 +680,110 @@ def _on_reader_error(self, msg: str) -> None:
+         self._conn_status.setStyleSheet(f"color: {COLORS['red']}; font-size: 10px;")
+         self._connect_btn.setText("Connect LMU")
+ 
++    # -- Streaming client connection --
++
++    def _toggle_stream(self) -> None:
++        if self._stream_client is not None and self._stream_client.isRunning():
++            self._disconnect_stream()
++        else:
++            self._show_stream_dialog()
++
++    def _show_stream_dialog(self) -> None:
++        dialog = QDialog(self)
++        dialog.setWindowTitle("Connect to Telemetry Stream")
++        form = QFormLayout(dialog)
++
++        host_edit = QLineEdit("127.0.0.1")
++        host_edit.setPlaceholderText("Server IP address")
++        form.addRow("Host:", host_edit)
++
++        port_spin = QSpinBox()
++        port_spin.setRange(1, 65535)
++        port_spin.setValue(9100)
++        form.addRow("Port:", port_spin)
++
++        buttons = QDialogButtonBox(
++            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
++        )
++        buttons.accepted.connect(dialog.accept)
++        buttons.rejected.connect(dialog.reject)
++        form.addRow(buttons)
++
++        if dialog.exec() == QDialog.DialogCode.Accepted:
++            self._connect_stream(host_edit.text().strip(), port_spin.value())
++
++    def _connect_stream(self, host: str, port: int) -> None:
++        global StreamingClient
++        if StreamingClient is None:
++            try:
++                from lmupi.streaming_client import StreamingClient as _SC
++                StreamingClient = _SC
++            except ImportError as exc:
++                self._conn_status.setText(f"Import error: {exc}")
++                self._conn_status.setStyleSheet(f"color: {COLORS['red']}; font-size: 10px;")
++                return
++
++        # Stop demo and LMU reader if running
++        if self._sim_timer.isActive():
++            self._sim_timer.stop()
++            self._live_btn.setText("Start Demo")
++        if self._reader is not None and self._reader.isRunning():
++            self._disconnect_lmu()
++
++        self._stream_client = StreamingClient(self, host=host, port=port)
++        self._stream_client.connected.connect(self._on_stream_connected)
++        self._stream_client.disconnected.connect(self._on_stream_disconnected)
++        self._stream_client.error.connect(self._on_stream_error)
++        self._stream_client.status_changed.connect(self._on_stream_status)
++        self._stream_client.channel_map_received.connect(self._on_stream_channels)
++
++        self._conn_status.setText(f"Connecting to {host}:{port}…")
++        self._conn_status.setStyleSheet(f"color: {COLORS['amber']}; font-size: 10px;")
++        self._stream_btn.setText("Disconnect")
++
++        self._stream_client.start_streaming()
++
++    def _disconnect_stream(self) -> None:
++        if self._stream_client is not None:
++            self._stream_client.stop_streaming()
++            self._stream_client = None
++        self._stream_btn.setText("Connect Stream")
++        self._conn_status.setText("Disconnected")
++        self._conn_status.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 10px;")
++
++    def _on_stream_connected(self) -> None:
++        self._conn_status.setText("Stream connected — receiving telemetry")
++        self._conn_status.setStyleSheet(f"color: {COLORS['green']}; font-size: 10px;")
++
++    def _on_stream_disconnected(self) -> None:
++        self._stream_btn.setText("Connect Stream")
++        self._conn_status.setText("Disconnected")
++        self._conn_status.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 10px;")
++
++    def _on_stream_error(self, msg: str) -> None:
++        self._conn_status.setText(msg)
++        self._conn_status.setStyleSheet(f"color: {COLORS['red']}; font-size: 10px;")
++
++    def _on_stream_status(self, msg: str) -> None:
++        self._conn_status.setText(msg)
++        self._conn_status.setStyleSheet(f"color: {COLORS['amber']}; font-size: 10px;")
++
++    def _on_stream_channels(self, specs: list) -> None:
++        """Register channels from the server's channel map."""
++        from lmupi.streaming_client import ChannelSpec
++        from lmupi.dashboard import TelemetryChannel
++        for spec in specs:
++            if spec.name not in self._channels:
++                ch = TelemetryChannel(
++                    name=spec.name,
++                    unit=spec.unit,
++                    min_val=spec.min_val,
++                    max_val=spec.max_val,
++                    warn_low=spec.warn_low,
++                    warn_high=spec.warn_high,
++                )
++                self.register_channel(ch, display=spec.display)
++
+     # -- Simulated data (placeholder) --
+ 
+     def _toggle_sim(self) -> None:
+diff --git a/LMUPI/lmupi/streaming_client.py b/LMUPI/lmupi/streaming_client.py
+new file mode 100644
+index 0000000..d9ddc83
+--- /dev/null
++++ b/LMUPI/lmupi/streaming_client.py
+@@ -0,0 +1,351 @@
++"""Telemetry streaming client (engineer side).
++
++Connects to a driver's streaming server to receive live telemetry and
++feeds it into a :class:`~lmupi.dashboard.LiveDashboard`.
++
++Protocol overview
++-----------------
++1. **TCP handshake** — client connects to ``host:port`` and receives a
++   JSON-encoded *channel map* describing every telemetry channel the server
++   will stream (name, unit, min, max, warn thresholds, display type).
++2. **UDP telemetry frames** — the server pushes compact binary frames on a
++   UDP port (communicated inside the handshake response).  Each frame
++   carries a 4-byte big-endian sequence number followed by a series of
++   ``(channel_index: u16, value: f32)`` pairs.
++3. **Jitter buffer** — incoming frames are held for ~100 ms before being
++   flushed to the dashboard, smoothing out network jitter.
++4. **Packet-loss handling** — gaps in sequence numbers are simply skipped;
++   the client never stalls waiting for a missing frame.
++5. **Auto-reconnect** — on disconnect the client retries with exponential
++   backoff (1 s → 2 s → 4 s … capped at 30 s).
++
++Usage::
++
++    client = StreamingClient(dashboard, host="192.168.1.10", port=9100)
++    client.start_streaming()   # begins connection + listening
++    client.stop_streaming()    # stops cleanly
++"""
++
++from __future__ import annotations
++
++import json
++import logging
++import socket
++import struct
++import time
++import threading
++from collections import deque
++from dataclasses import dataclass, field
++
++from PySide6.QtCore import QThread, Signal, QTimer
++
++logger = logging.getLogger(__name__)
++
++# ---------------------------------------------------------------------------
++# Wire-format constants
++# ---------------------------------------------------------------------------
++
++_HANDSHAKE_MAGIC = b"TELE"          # 4-byte magic sent by the client
++_HANDSHAKE_VERSION = 1              # protocol version
++_HEADER_SIZE = 4                    # sequence number (uint32 big-endian)
++_PAIR_SIZE = 6                      # channel_index (uint16) + value (float32)
++_MAX_UDP_SIZE = 65535               # maximum UDP datagram
++_TCP_RECV_SIZE = 4096               # TCP receive chunk size
++_HANDSHAKE_TIMEOUT_S = 5.0          # TCP connect + recv timeout
++_DEFAULT_BUFFER_MS = 100            # jitter buffer depth
++_RECONNECT_BASE_S = 1.0            # initial backoff
++_RECONNECT_CAP_S = 30.0            # max backoff
++
++
++# ---------------------------------------------------------------------------
++# Data helpers
++# ---------------------------------------------------------------------------
++
++@dataclass
++class ChannelSpec:
++    """Description of a single telemetry channel received during handshake."""
++    index: int
++    name: str
++    unit: str = ""
++    min_val: float = 0.0
++    max_val: float = 100.0
++    warn_low: float | None = None
++    warn_high: float | None = None
++    display: str = "gauge"  # "gauge" or "spark"
++
++
++@dataclass
++class TelemetryFrame:
++    """A single received UDP frame."""
++    seq: int
++    timestamp: float  # local receive time (monotonic)
++    pairs: list[tuple[int, float]] = field(default_factory=list)
++
++
++def parse_channel_map(data: bytes) -> tuple[list[ChannelSpec], int]:
++    """Parse the JSON channel map received over TCP.
++
++    Returns ``(channels, udp_port)``.
++    """
++    payload = json.loads(data.decode("utf-8"))
++    udp_port = int(payload["udp_port"])
++    channels: list[ChannelSpec] = []
++    for i, ch in enumerate(payload["channels"]):
++        channels.append(ChannelSpec(
++            index=i,
++            name=ch["name"],
++            unit=ch.get("unit", ""),
++            min_val=ch.get("min", 0.0),
++            max_val=ch.get("max", 100.0),
++            warn_low=ch.get("warn_low"),
++            warn_high=ch.get("warn_high"),
++            display=ch.get("display", "gauge"),
++        ))
++    return channels, udp_port
++
++
++def parse_udp_frame(data: bytes) -> TelemetryFrame | None:
++    """Decode a binary UDP telemetry frame.
++
++    Frame layout::
++
++        [seq: uint32 BE] [channel_idx: uint16 BE, value: float32 BE] ...
++
++    Returns *None* if the datagram is malformed.
++    """
++    if len(data) < _HEADER_SIZE:
++        return None
++    seq = struct.unpack("!I", data[:_HEADER_SIZE])[0]
++    body = data[_HEADER_SIZE:]
++    if len(body) % _PAIR_SIZE != 0:
++        return None
++    n_pairs = len(body) // _PAIR_SIZE
++    pairs: list[tuple[int, float]] = []
++    for i in range(n_pairs):
++        offset = i * _PAIR_SIZE
++        idx, val = struct.unpack("!Hf", body[offset:offset + _PAIR_SIZE])
++        pairs.append((idx, val))
++    return TelemetryFrame(seq=seq, timestamp=time.monotonic(), pairs=pairs)
++
++
++def build_handshake_request() -> bytes:
++    """Build the client handshake request sent over TCP."""
++    return _HANDSHAKE_MAGIC + struct.pack("!B", _HANDSHAKE_VERSION)
++
++
++# ---------------------------------------------------------------------------
++# Jitter buffer
++# ---------------------------------------------------------------------------
++
++class JitterBuffer:
++    """Simple time-based jitter buffer.
++
++    Frames are held for *buffer_ms* milliseconds before being released in
++    sequence order.  Out-of-order or duplicate frames are silently dropped.
++    """
++
++    def __init__(self, buffer_ms: int = _DEFAULT_BUFFER_MS) -> None:
++        self._buffer_s = buffer_ms / 1000.0
++        self._pending: deque[TelemetryFrame] = deque()
++        self._last_released_seq: int = -1
++
++    def put(self, frame: TelemetryFrame) -> None:
++        """Add a frame to the buffer."""
++        # Drop duplicates and frames older than last released
++        if frame.seq <= self._last_released_seq:
++            return
++        self._pending.append(frame)
++
++    def flush(self) -> list[TelemetryFrame]:
++        """Return frames that have been buffered long enough, in order."""
++        now = time.monotonic()
++        ready: list[TelemetryFrame] = []
++        remaining: deque[TelemetryFrame] = deque()
++
++        for frame in self._pending:
++            if now - frame.timestamp >= self._buffer_s:
++                ready.append(frame)
++            else:
++                remaining.append(frame)
++
++        self._pending = remaining
++
++        # Sort by sequence and skip anything already released
++        ready.sort(key=lambda f: f.seq)
++        output: list[TelemetryFrame] = []
++        for frame in ready:
++            if frame.seq > self._last_released_seq:
++                self._last_released_seq = frame.seq
++                output.append(frame)
++        return output
++
++    def reset(self) -> None:
++        """Clear all buffered state."""
++        self._pending.clear()
++        self._last_released_seq = -1
++
++
++# ---------------------------------------------------------------------------
++# Streaming client (QThread)
++# ---------------------------------------------------------------------------
++
++class StreamingClient(QThread):
++    """Background thread that connects to a telemetry streaming server.
++
++    Signals
++    -------
++    connected : ()
++        Emitted when the TCP handshake succeeds and UDP listening starts.
++    disconnected : ()
++        Emitted when the connection is lost or the client is stopped.
++    error : (str)
++        Emitted with a human-readable error message.
++    status_changed : (str)
++        Emitted whenever the connection status text changes.
++    channel_map_received : (list)
++        Emitted with the list of :class:`ChannelSpec` after a successful
++        handshake, so the dashboard can register channels.
++    """
++
++    connected = Signal()
++    disconnected = Signal()
++    error = Signal(str)
++    status_changed = Signal(str)
++    channel_map_received = Signal(list)
++
++    def __init__(
++        self,
++        dashboard,
++        host: str,
++        port: int,
++        buffer_ms: int = _DEFAULT_BUFFER_MS,
++        parent=None,
++    ) -> None:
++        super().__init__(parent)
++        self._dashboard = dashboard
++        self._host = host
++        self._port = port
++        self._buffer_ms = buffer_ms
++        self._running = False
++
++        # Populated after handshake
++        self._channel_specs: list[ChannelSpec] = []
++        self._index_to_name: dict[int, str] = {}
++        self._udp_port: int = 0
++
++    # -- Public API ---------------------------------------------------------
++
++    def start_streaming(self) -> None:
++        """Start the streaming client thread."""
++        self._running = True
++        self.start()
++
++    def stop_streaming(self) -> None:
++        """Signal the client to stop and wait for it to finish."""
++        self._running = False
++        self.wait(5000)
++
++    # -- Thread entry point -------------------------------------------------
++
++    def run(self) -> None:  # noqa: C901 — linear flow, not complex
++        backoff = _RECONNECT_BASE_S
++
++        while self._running:
++            try:
++                self._do_session()
++            except Exception as exc:
++                logger.exception("StreamingClient session error")
++                self.error.emit(str(exc))
++
++            if not self._running:
++                break
++
++            # Auto-reconnect with exponential backoff
++            self.status_changed.emit(f"Reconnecting in {backoff:.0f}s…")
++            logger.info("StreamingClient: reconnecting in %.1fs", backoff)
++            deadline = time.monotonic() + backoff
++            while self._running and time.monotonic() < deadline:
++                self.msleep(250)
++            backoff = min(backoff * 2, _RECONNECT_CAP_S)
++
++        self.disconnected.emit()
++
++    # -- Single session -----------------------------------------------------
++
++    def _do_session(self) -> None:
++        """Run one connect → listen → disconnect cycle."""
++        # 1. TCP handshake
++        self.status_changed.emit("Connecting…")
++        tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
++        tcp_sock.settimeout(_HANDSHAKE_TIMEOUT_S)
++        try:
++            tcp_sock.connect((self._host, self._port))
++            tcp_sock.sendall(build_handshake_request())
++
++            # Receive channel map (may arrive in multiple chunks)
++            chunks: list[bytes] = []
++            while True:
++                chunk = tcp_sock.recv(_TCP_RECV_SIZE)
++                if not chunk:
++                    break
++                chunks.append(chunk)
++            raw = b"".join(chunks)
++            if not raw:
++                raise ConnectionError("Empty handshake response")
++
++            self._channel_specs, self._udp_port = parse_channel_map(raw)
++            self._index_to_name = {ch.index: ch.name for ch in self._channel_specs}
++        except Exception as exc:
++            raise ConnectionError(f"Handshake failed: {exc}") from exc
++        finally:
++            tcp_sock.close()
++
++        logger.info(
++            "StreamingClient: handshake OK — %d channels, UDP port %d",
++            len(self._channel_specs),
++            self._udp_port,
++        )
++
++        # Notify dashboard so it can register channels
++        self.channel_map_received.emit(self._channel_specs)
++        self.connected.emit()
++        self.status_changed.emit("Connected — receiving telemetry")
++
++        # Reset backoff on successful connection
++        # (handled in run() by reaching this point without exception)
++
++        # 2. UDP listener
++        udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
++        udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
++        udp_sock.bind(("", self._udp_port))
++        udp_sock.settimeout(1.0)  # allow periodic _running checks
++
++        jitter = JitterBuffer(self._buffer_ms)
++
++        try:
++            while self._running:
++                # Receive UDP frames
++                try:
++                    data, _addr = udp_sock.recvfrom(_MAX_UDP_SIZE)
++                except socket.timeout:
++                    # Flush buffer even when no new data arrives
++                    self._flush_to_dashboard(jitter)
++                    continue
++
++                frame = parse_udp_frame(data)
++                if frame is not None:
++                    jitter.put(frame)
++
++                # Flush matured frames to dashboard
++                self._flush_to_dashboard(jitter)
++        finally:
++            udp_sock.close()
++            jitter.reset()
++
++    def _flush_to_dashboard(self, jitter: JitterBuffer) -> None:
++        """Push all matured frames from the jitter buffer to the dashboard."""
++        for frame in jitter.flush():
++            for ch_idx, value in frame.pairs:
++                name = self._index_to_name.get(ch_idx)
++                if name is not None:
++                    self._dashboard.push(name, value)
+diff --git a/LMUPI/tests/__init__.py b/LMUPI/tests/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/LMUPI/tests/__pycache__/__init__.cpython-312.pyc b/LMUPI/tests/__pycache__/__init__.cpython-312.pyc
+new file mode 100644
+index 0000000..8663d38
+Binary files /dev/null and b/LMUPI/tests/__pycache__/__init__.cpython-312.pyc differ
+diff --git a/LMUPI/tests/__pycache__/test_streaming_client.cpython-312-pytest-9.0.2.pyc b/LMUPI/tests/__pycache__/test_streaming_client.cpython-312-pytest-9.0.2.pyc
+new file mode 100644
+index 0000000..437fd51
+Binary files /dev/null and b/LMUPI/tests/__pycache__/test_streaming_client.cpython-312-pytest-9.0.2.pyc differ
+diff --git a/LMUPI/tests/test_streaming_client.py b/LMUPI/tests/test_streaming_client.py
+new file mode 100644
+index 0000000..3e645f9
+--- /dev/null
++++ b/LMUPI/tests/test_streaming_client.py
+@@ -0,0 +1,219 @@
++"""Tests for the telemetry streaming client protocol logic."""
++
++from __future__ import annotations
++
++import json
++import struct
++import sys
++import time
++import unittest
++from unittest import mock
++
++# Provide a lightweight PySide6 stub so the streaming_client module can be
++# imported without the real (heavy) PySide6 dependency.
++_pyside6_stub = mock.MagicMock()
++sys.modules.setdefault("PySide6", _pyside6_stub)
++sys.modules.setdefault("PySide6.QtCore", _pyside6_stub)
++
++from lmupi.streaming_client import (  # noqa: E402
++    ChannelSpec,
++    JitterBuffer,
++    TelemetryFrame,
++    build_handshake_request,
++    parse_channel_map,
++    parse_udp_frame,
++    _HANDSHAKE_MAGIC,
++    _HANDSHAKE_VERSION,
++)
++
++
++class TestHandshake(unittest.TestCase):
++    """Verify the TCP handshake request/response encoding."""
++
++    def test_build_handshake_request(self) -> None:
++        req = build_handshake_request()
++        self.assertEqual(req[:4], _HANDSHAKE_MAGIC)
++        self.assertEqual(req[4], _HANDSHAKE_VERSION)
++        self.assertEqual(len(req), 5)
++
++    def test_parse_channel_map_basic(self) -> None:
++        payload = {
++            "udp_port": 9200,
++            "channels": [
++                {"name": "Speed", "unit": "km/h", "min": 0, "max": 340},
++                {"name": "RPM", "unit": "rpm", "min": 0, "max": 9000, "warn_high": 8500},
++            ],
++        }
++        data = json.dumps(payload).encode("utf-8")
++        channels, udp_port = parse_channel_map(data)
++
++        self.assertEqual(udp_port, 9200)
++        self.assertEqual(len(channels), 2)
++        self.assertEqual(channels[0].name, "Speed")
++        self.assertEqual(channels[0].unit, "km/h")
++        self.assertEqual(channels[0].min_val, 0)
++        self.assertEqual(channels[0].max_val, 340)
++        self.assertIsNone(channels[0].warn_high)
++        self.assertEqual(channels[1].name, "RPM")
++        self.assertEqual(channels[1].warn_high, 8500)
++
++    def test_parse_channel_map_defaults(self) -> None:
++        payload = {
++            "udp_port": 5000,
++            "channels": [{"name": "Throttle"}],
++        }
++        data = json.dumps(payload).encode("utf-8")
++        channels, udp_port = parse_channel_map(data)
++
++        self.assertEqual(len(channels), 1)
++        self.assertEqual(channels[0].unit, "")
++        self.assertEqual(channels[0].min_val, 0.0)
++        self.assertEqual(channels[0].max_val, 100.0)
++        self.assertIsNone(channels[0].warn_low)
++        self.assertEqual(channels[0].display, "gauge")
++
++    def test_parse_channel_map_display_spark(self) -> None:
++        payload = {
++            "udp_port": 5000,
++            "channels": [{"name": "Tyre FL", "display": "spark"}],
++        }
++        data = json.dumps(payload).encode("utf-8")
++        channels, _ = parse_channel_map(data)
++        self.assertEqual(channels[0].display, "spark")
++
++
++class TestUDPFrameParsing(unittest.TestCase):
++    """Verify binary UDP frame decoding."""
++
++    def _make_frame(self, seq: int, pairs: list[tuple[int, float]]) -> bytes:
++        buf = struct.pack("!I", seq)
++        for idx, val in pairs:
++            buf += struct.pack("!Hf", idx, val)
++        return buf
++
++    def test_parse_valid_frame(self) -> None:
++        raw = self._make_frame(42, [(0, 120.5), (1, 7200.0)])
++        frame = parse_udp_frame(raw)
++
++        self.assertIsNotNone(frame)
++        self.assertEqual(frame.seq, 42)
++        self.assertEqual(len(frame.pairs), 2)
++        self.assertEqual(frame.pairs[0][0], 0)
++        self.assertAlmostEqual(frame.pairs[0][1], 120.5, places=1)
++        self.assertEqual(frame.pairs[1][0], 1)
++        self.assertAlmostEqual(frame.pairs[1][1], 7200.0, places=1)
++
++    def test_parse_empty_body(self) -> None:
++        raw = struct.pack("!I", 1)  # header only, no pairs
++        frame = parse_udp_frame(raw)
++        self.assertIsNotNone(frame)
++        self.assertEqual(frame.seq, 1)
++        self.assertEqual(len(frame.pairs), 0)
++
++    def test_parse_too_short(self) -> None:
++        self.assertIsNone(parse_udp_frame(b""))
++        self.assertIsNone(parse_udp_frame(b"\x00\x01\x02"))
++
++    def test_parse_malformed_body(self) -> None:
++        raw = struct.pack("!I", 5) + b"\x00\x01"  # body not multiple of 6
++        self.assertIsNone(parse_udp_frame(raw))
++
++    def test_large_sequence_number(self) -> None:
++        raw = self._make_frame(2**32 - 1, [(0, 1.0)])
++        frame = parse_udp_frame(raw)
++        self.assertEqual(frame.seq, 2**32 - 1)
++
++
++class TestJitterBuffer(unittest.TestCase):
++    """Verify jitter buffer ordering, dedup, and timed release."""
++
++    def _frame(self, seq: int, ts: float | None = None) -> TelemetryFrame:
++        return TelemetryFrame(
++            seq=seq,
++            timestamp=ts if ts is not None else time.monotonic(),
++            pairs=[(0, float(seq))],
++        )
++
++    def test_in_order_release(self) -> None:
++        buf = JitterBuffer(buffer_ms=0)  # no delay — release immediately
++        buf.put(self._frame(1))
++        buf.put(self._frame(2))
++        buf.put(self._frame(3))
++
++        frames = buf.flush()
++        seqs = [f.seq for f in frames]
++        self.assertEqual(seqs, [1, 2, 3])
++
++    def test_out_of_order_sorted(self) -> None:
++        buf = JitterBuffer(buffer_ms=0)
++        buf.put(self._frame(3))
++        buf.put(self._frame(1))
++        buf.put(self._frame(2))
++
++        frames = buf.flush()
++        seqs = [f.seq for f in frames]
++        self.assertEqual(seqs, [1, 2, 3])
++
++    def test_duplicate_dropped(self) -> None:
++        buf = JitterBuffer(buffer_ms=0)
++        buf.put(self._frame(1))
++        buf.flush()
++        buf.put(self._frame(1))  # duplicate — should be dropped on put
++
++        frames = buf.flush()
++        self.assertEqual(len(frames), 0)
++
++    def test_old_frame_dropped(self) -> None:
++        buf = JitterBuffer(buffer_ms=0)
++        buf.put(self._frame(5))
++        buf.flush()
++        buf.put(self._frame(3))  # older than last released
++
++        frames = buf.flush()
++        self.assertEqual(len(frames), 0)
++
++    def test_gap_handling(self) -> None:
++        """Packet loss (missing seq 2) — should release 1 and 3, skipping gap."""
++        buf = JitterBuffer(buffer_ms=0)
++        buf.put(self._frame(1))
++        buf.put(self._frame(3))  # seq 2 lost
++
++        frames = buf.flush()
++        seqs = [f.seq for f in frames]
++        self.assertEqual(seqs, [1, 3])
++
++    def test_timed_buffer(self) -> None:
++        """Frames should not be released until buffer time has elapsed."""
++        buf = JitterBuffer(buffer_ms=200)
++        now = time.monotonic()
++        buf.put(self._frame(1, ts=now))
++
++        # Should not release yet
++        frames = buf.flush()
++        self.assertEqual(len(frames), 0)
++
++    def test_timed_buffer_release_after_delay(self) -> None:
++        """Frames should be released after buffer time passes."""
++        buf = JitterBuffer(buffer_ms=50)
++        past = time.monotonic() - 0.1  # 100ms ago
++        buf.put(self._frame(1, ts=past))
++
++        frames = buf.flush()
++        self.assertEqual(len(frames), 1)
++        self.assertEqual(frames[0].seq, 1)
++
++    def test_reset(self) -> None:
++        buf = JitterBuffer(buffer_ms=0)
++        buf.put(self._frame(5))
++        buf.flush()
++        buf.reset()
++
++        # After reset, seq 1 should be accepted again
++        buf.put(self._frame(1))
++        frames = buf.flush()
++        self.assertEqual(len(frames), 1)
++        self.assertEqual(frames[0].seq, 1)
++
++
++if __name__ == "__main__":
++    unittest.main()

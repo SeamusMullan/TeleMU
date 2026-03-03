@@ -1,0 +1,772 @@
+diff --git a/.gitignore b/.gitignore
+index 4057f33..50498ae 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,2 +1,4 @@
+ node_modules/
+ .venv/
++__pycache__/
++*.pyc
+diff --git a/LMUPI/lmupi/__pycache__/__init__.cpython-313.pyc b/LMUPI/lmupi/__pycache__/__init__.cpython-313.pyc
+deleted file mode 100644
+index 63b4eed..0000000
+Binary files a/LMUPI/lmupi/__pycache__/__init__.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/__init__.cpython-314.pyc b/LMUPI/lmupi/__pycache__/__init__.cpython-314.pyc
+deleted file mode 100644
+index 9209b28..0000000
+Binary files a/LMUPI/lmupi/__pycache__/__init__.cpython-314.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/advanced.cpython-313.pyc b/LMUPI/lmupi/__pycache__/advanced.cpython-313.pyc
+deleted file mode 100644
+index 29ebe13..0000000
+Binary files a/LMUPI/lmupi/__pycache__/advanced.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/analyzer.cpython-313.pyc b/LMUPI/lmupi/__pycache__/analyzer.cpython-313.pyc
+deleted file mode 100644
+index 8e259c5..0000000
+Binary files a/LMUPI/lmupi/__pycache__/analyzer.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/app.cpython-313.pyc b/LMUPI/lmupi/__pycache__/app.cpython-313.pyc
+deleted file mode 100644
+index 7c1b042..0000000
+Binary files a/LMUPI/lmupi/__pycache__/app.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/app.cpython-314.pyc b/LMUPI/lmupi/__pycache__/app.cpython-314.pyc
+deleted file mode 100644
+index 758f967..0000000
+Binary files a/LMUPI/lmupi/__pycache__/app.cpython-314.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/dashboard.cpython-313.pyc b/LMUPI/lmupi/__pycache__/dashboard.cpython-313.pyc
+deleted file mode 100644
+index 65b7d12..0000000
+Binary files a/LMUPI/lmupi/__pycache__/dashboard.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/splitter.cpython-313.pyc b/LMUPI/lmupi/__pycache__/splitter.cpython-313.pyc
+deleted file mode 100644
+index 0253ae6..0000000
+Binary files a/LMUPI/lmupi/__pycache__/splitter.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/telemetry_reader.cpython-313.pyc b/LMUPI/lmupi/__pycache__/telemetry_reader.cpython-313.pyc
+deleted file mode 100644
+index e3f823a..0000000
+Binary files a/LMUPI/lmupi/__pycache__/telemetry_reader.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/theme.cpython-313.pyc b/LMUPI/lmupi/__pycache__/theme.cpython-313.pyc
+deleted file mode 100644
+index 71795d2..0000000
+Binary files a/LMUPI/lmupi/__pycache__/theme.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/track_viewer.cpython-313.pyc b/LMUPI/lmupi/__pycache__/track_viewer.cpython-313.pyc
+deleted file mode 100644
+index 85d95e9..0000000
+Binary files a/LMUPI/lmupi/__pycache__/track_viewer.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/widgets.cpython-313.pyc b/LMUPI/lmupi/__pycache__/widgets.cpython-313.pyc
+deleted file mode 100644
+index 51a4693..0000000
+Binary files a/LMUPI/lmupi/__pycache__/widgets.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/compressed_recorder.py b/LMUPI/lmupi/compressed_recorder.py
+new file mode 100644
+index 0000000..5986aeb
+--- /dev/null
++++ b/LMUPI/lmupi/compressed_recorder.py
+@@ -0,0 +1,309 @@
++"""Real-time compressed telemetry recorder.
++
++Streams telemetry frames into an LZ4-compressed file with chunk-based
++compression for low latency and a chunk index table appended on finalize
++to allow random access.
++
++File layout
++-----------
++[Header]               fixed-size, identifies format + compressor
++[Chunk 0]              compressed payload (N frames)
++[Chunk 1]              …
++  …
++[Chunk K]
++[Index Table]          array of (offset, compressed_size, frame_count) per chunk
++[Footer]               index_table_offset, total_frames, total_chunks
++
++Supported compressors: ``lz4`` (default), ``zstd`` (fallback).
++
++Usage::
++
++    rec = CompressedRecorder("session.tlm", chunk_frames=64)
++    rec.start()
++    for frame_bytes in telemetry_stream:
++        rec.write_frame(frame_bytes)
++    rec.finalize()
++"""
++
++from __future__ import annotations
++
++import io
++import logging
++import struct
++import time
++from pathlib import Path
++from typing import BinaryIO, Literal
++
++import lz4.frame
++import zstandard
++
++logger = logging.getLogger(__name__)
++
++# ── constants ──────────────────────────────────────────────────────────────
++MAGIC = b"TLMU"
++FORMAT_VERSION = 1
++HEADER_SIZE = 16  # 4 magic + 4 version + 4 compressor_id + 4 reserved
++INDEX_ENTRY_FMT = "<QII"  # offset(u64), compressed_size(u32), frame_count(u32)
++INDEX_ENTRY_SIZE = struct.calcsize(INDEX_ENTRY_FMT)
++FOOTER_FMT = "<QII"  # index_offset(u64), total_frames(u32), total_chunks(u32)
++FOOTER_SIZE = struct.calcsize(FOOTER_FMT)
++
++COMPRESSOR_LZ4 = 1
++COMPRESSOR_ZSTD = 2
++
++CompressorName = Literal["lz4", "zstd"]
++
++
++# ── compressor helpers ─────────────────────────────────────────────────────
++
++def _compress_lz4(data: bytes) -> bytes:
++    return lz4.frame.compress(data)
++
++
++def _decompress_lz4(data: bytes) -> bytes:
++    return lz4.frame.decompress(data)
++
++
++def _compress_zstd(data: bytes, *, level: int = 3) -> bytes:
++    cctx = zstandard.ZstdCompressor(level=level)
++    return cctx.compress(data)
++
++
++def _decompress_zstd(data: bytes) -> bytes:
++    dctx = zstandard.ZstdDecompressor()
++    return dctx.decompress(data)
++
++
++_COMPRESSORS = {
++    "lz4": (COMPRESSOR_LZ4, _compress_lz4, _decompress_lz4),
++    "zstd": (COMPRESSOR_ZSTD, _compress_zstd, _decompress_zstd),
++}
++
++_ID_TO_NAME = {COMPRESSOR_LZ4: "lz4", COMPRESSOR_ZSTD: "zstd"}
++
++
++# ── recorder ───────────────────────────────────────────────────────────────
++
++class CompressedRecorder:
++    """Stream telemetry frames into a chunk-compressed file.
++
++    Parameters
++    ----------
++    path:
++        Destination file path.
++    compressor:
++        ``"lz4"`` (default) or ``"zstd"``.
++    chunk_frames:
++        Number of frames buffered before flushing a compressed chunk.
++    """
++
++    def __init__(
++        self,
++        path: str | Path,
++        *,
++        compressor: CompressorName = "lz4",
++        chunk_frames: int = 64,
++    ) -> None:
++        self._path = Path(path)
++        if compressor not in _COMPRESSORS:
++            raise ValueError(f"Unknown compressor: {compressor!r}")
++        self._comp_id, self._compress, self._decompress = _COMPRESSORS[compressor]
++        self._chunk_frames = max(1, chunk_frames)
++
++        self._fp: BinaryIO | None = None
++        self._frame_buf: list[bytes] = []
++        self._index: list[tuple[int, int, int]] = []  # (offset, comp_size, n_frames)
++        self._total_frames = 0
++        self._started = False
++
++    # ── lifecycle ──────────────────────────────────────────────────────
++
++    def start(self) -> None:
++        """Open the file and write the header."""
++        if self._started:
++            raise RuntimeError("Recorder already started")
++        self._fp = open(self._path, "wb")
++        self._write_header()
++        self._started = True
++
++    def finalize(self) -> None:
++        """Flush remaining frames, write the index table & footer, close."""
++        if not self._started:
++            return
++        self._flush_chunk()
++        self._write_index_and_footer()
++        self._fp.close()
++        self._fp = None
++        self._started = False
++        logger.info(
++            "Recording finalized: %d frames in %d chunks → %s",
++            self._total_frames,
++            len(self._index),
++            self._path,
++        )
++
++    # ── writing ────────────────────────────────────────────────────────
++
++    def write_frame(self, frame: bytes) -> None:
++        """Buffer a single frame; flushes automatically when chunk is full."""
++        if not self._started:
++            raise RuntimeError("Recorder not started")
++        self._frame_buf.append(frame)
++        if len(self._frame_buf) >= self._chunk_frames:
++            self._flush_chunk()
++
++    # ── internals ──────────────────────────────────────────────────────
++
++    def _write_header(self) -> None:
++        hdr = struct.pack(
++            "<4sIII",
++            MAGIC,
++            FORMAT_VERSION,
++            self._comp_id,
++            0,  # reserved
++        )
++        self._fp.write(hdr)
++
++    def _flush_chunk(self) -> None:
++        if not self._frame_buf:
++            return
++        # Concatenate frames with length-prefix for each
++        buf = io.BytesIO()
++        for f in self._frame_buf:
++            buf.write(struct.pack("<I", len(f)))
++            buf.write(f)
++        raw = buf.getvalue()
++
++        compressed = self._compress(raw)
++
++        offset = self._fp.tell()
++        # Write: compressed_size (u32) + compressed payload
++        self._fp.write(struct.pack("<I", len(compressed)))
++        self._fp.write(compressed)
++
++        n = len(self._frame_buf)
++        self._index.append((offset, len(compressed), n))
++        self._total_frames += n
++        self._frame_buf.clear()
++
++    def _write_index_and_footer(self) -> None:
++        index_offset = self._fp.tell()
++        for entry in self._index:
++            self._fp.write(struct.pack(INDEX_ENTRY_FMT, *entry))
++        self._fp.write(
++            struct.pack(FOOTER_FMT, index_offset, self._total_frames, len(self._index))
++        )
++
++
++# ── reader ─────────────────────────────────────────────────────────────────
++
++class CompressedReader:
++    """Read back a compressed telemetry recording.
++
++    Supports random-access by chunk via the index table and sequential
++    iteration over all frames.
++
++    Parameters
++    ----------
++    path:
++        Path to a ``.tlm`` file written by :class:`CompressedRecorder`.
++    """
++
++    def __init__(self, path: str | Path) -> None:
++        self._path = Path(path)
++        self._fp: BinaryIO | None = None
++        self._comp_name: str = ""
++        self._decompress = None
++        self._index: list[tuple[int, int, int]] = []
++        self._total_frames = 0
++        self._total_chunks = 0
++
++    def open(self) -> None:
++        """Open the file and read header + index."""
++        self._fp = open(self._path, "rb")
++        self._read_header()
++        self._read_index()
++
++    def close(self) -> None:
++        if self._fp:
++            self._fp.close()
++            self._fp = None
++
++    def __enter__(self):
++        self.open()
++        return self
++
++    def __exit__(self, *exc):
++        self.close()
++
++    # ── public API ─────────────────────────────────────────────────────
++
++    @property
++    def total_frames(self) -> int:
++        return self._total_frames
++
++    @property
++    def total_chunks(self) -> int:
++        return self._total_chunks
++
++    @property
++    def compressor(self) -> str:
++        return self._comp_name
++
++    def read_chunk(self, chunk_idx: int) -> list[bytes]:
++        """Decompress and return all frames from *chunk_idx*."""
++        if chunk_idx < 0 or chunk_idx >= self._total_chunks:
++            raise IndexError(f"chunk index {chunk_idx} out of range")
++        offset, comp_size, n_frames = self._index[chunk_idx]
++        self._fp.seek(offset)
++        raw_header = self._fp.read(4)
++        stored_size = struct.unpack("<I", raw_header)[0]
++        compressed = self._fp.read(stored_size)
++        raw = self._decompress(compressed)
++        return self._unpack_frames(raw, n_frames)
++
++    def iter_frames(self):
++        """Yield every frame in order."""
++        for ci in range(self._total_chunks):
++            yield from self.read_chunk(ci)
++
++    # ── internals ──────────────────────────────────────────────────────
++
++    def _read_header(self) -> None:
++        hdr = self._fp.read(HEADER_SIZE)
++        if len(hdr) < HEADER_SIZE:
++            raise ValueError("Truncated file header")
++        magic, version, comp_id, _ = struct.unpack("<4sIII", hdr)
++        if magic != MAGIC:
++            raise ValueError(f"Bad magic: {magic!r}")
++        if version != FORMAT_VERSION:
++            raise ValueError(f"Unsupported version: {version}")
++        name = _ID_TO_NAME.get(comp_id)
++        if name is None:
++            raise ValueError(f"Unknown compressor id: {comp_id}")
++        self._comp_name = name
++        _, _, self._decompress = _COMPRESSORS[name]
++
++    def _read_index(self) -> None:
++        # Footer is at the very end
++        self._fp.seek(-FOOTER_SIZE, 2)
++        footer = self._fp.read(FOOTER_SIZE)
++        index_offset, self._total_frames, self._total_chunks = struct.unpack(
++            FOOTER_FMT, footer
++        )
++        self._fp.seek(index_offset)
++        self._index = []
++        for _ in range(self._total_chunks):
++            entry = self._fp.read(INDEX_ENTRY_SIZE)
++            self._index.append(struct.unpack(INDEX_ENTRY_FMT, entry))
++
++    @staticmethod
++    def _unpack_frames(raw: bytes, expected: int) -> list[bytes]:
++        frames: list[bytes] = []
++        pos = 0
++        while pos < len(raw) and len(frames) < expected:
++            (flen,) = struct.unpack_from("<I", raw, pos)
++            pos += 4
++            frames.append(raw[pos : pos + flen])
++            pos += flen
++        return frames
+diff --git a/LMUPI/lmupi/telemetry_reader.py b/LMUPI/lmupi/telemetry_reader.py
+index 1a336f5..392320b 100644
+--- a/LMUPI/lmupi/telemetry_reader.py
++++ b/LMUPI/lmupi/telemetry_reader.py
+@@ -12,11 +12,13 @@
+ 
+ from __future__ import annotations
+ 
++import ctypes
+ import logging
+ import math
+ 
+ from PySide6.QtCore import QThread, Signal
+ 
++from lmupi.compressed_recorder import CompressedRecorder
+ from lmupi.sharedmem.lmu_data import LMUConstants, LMUObjectOut
+ from lmupi.sharedmem.lmu_mmap import MMapControl
+ 
+@@ -68,6 +70,9 @@ def __init__(self, dashboard, poll_ms: int = 16, parent=None) -> None:
+         # Track lap changes for lap info updates
+         self._last_lap = -1
+ 
++        # Optional compressed recording
++        self._recorder: CompressedRecorder | None = None
++
+     def start_reading(self) -> None:
+         """Start the reader thread."""
+         self._running = True
+@@ -78,6 +83,29 @@ def stop_reading(self) -> None:
+         self._running = False
+         self.wait(2000)
+ 
++    # ── recording ──────────────────────────────────────────────────────
++
++    def start_recording(self, path: str, *, compressor: str = "lz4", chunk_frames: int = 64) -> None:
++        """Begin recording telemetry frames to a compressed file.
++
++        Args:
++            path: destination file path.
++            compressor: ``"lz4"`` (default) or ``"zstd"``.
++            chunk_frames: frames per compressed chunk.
++        """
++        rec = CompressedRecorder(path, compressor=compressor, chunk_frames=chunk_frames)
++        rec.start()
++        self._recorder = rec
++        logger.info("Recording started → %s", path)
++
++    def stop_recording(self) -> None:
++        """Finalize and close the current recording."""
++        rec = self._recorder
++        if rec is not None:
++            rec.finalize()
++            self._recorder = None
++            logger.info("Recording stopped")
++
+     def run(self) -> None:
+         """Thread main loop."""
+         try:
+@@ -100,6 +128,7 @@ def run(self) -> None:
+         except Exception as exc:
+             self.error.emit(f"Telemetry read error: {exc}")
+         finally:
++            self.stop_recording()
+             try:
+                 self._mmap.close()
+             except Exception:
+@@ -117,6 +146,13 @@ def _poll_once(self) -> None:
+         mmap.update()
+         data = mmap.data
+ 
++        # Record raw telemetry snapshot if recording is active
++        if self._recorder is not None:
++            frame_bytes = bytes(ctypes.string_at(
++                ctypes.addressof(data), ctypes.sizeof(data)
++            ))
++            self._recorder.write_frame(frame_bytes)
++
+         # Check if game is running
+         version = data.generic.gameVersion
+         if not version:
+diff --git a/LMUPI/pyproject.toml b/LMUPI/pyproject.toml
+index 6f9abd8..18545ab 100644
+--- a/LMUPI/pyproject.toml
++++ b/LMUPI/pyproject.toml
+@@ -6,10 +6,12 @@ readme = "README.md"
+ requires-python = ">=3.13"
+ dependencies = [
+     "duckdb>=1.4.4",
++    "lz4>=4.4.0",
+     "matplotlib>=3.10.8",
+     "numpy>=2.4.2",
+     "pyside6>=6.10.2",
+     "scipy>=1.17.1",
++    "zstandard>=0.22.0",
+ ]
+ 
+ [project.scripts]
+diff --git a/LMUPI/tests/__init__.py b/LMUPI/tests/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/LMUPI/tests/test_compressed_recorder.py b/LMUPI/tests/test_compressed_recorder.py
+new file mode 100644
+index 0000000..9f1d23b
+--- /dev/null
++++ b/LMUPI/tests/test_compressed_recorder.py
+@@ -0,0 +1,294 @@
++"""Tests for compressed_recorder — LZ4 and zstd chunk-compressed recording."""
++
++from __future__ import annotations
++
++import os
++import struct
++import time
++
++import pytest
++
++from lmupi.compressed_recorder import (
++    MAGIC,
++    CompressedReader,
++    CompressedRecorder,
++)
++
++
++# ---------------------------------------------------------------------------
++# Helpers
++# ---------------------------------------------------------------------------
++
++
++def _make_frame(idx: int, size: int = 256) -> bytes:
++    """Return a deterministic frame of *size* bytes for testing."""
++    return bytes([idx & 0xFF] * size)
++
++
++def _make_telemetry_frame(idx: int) -> bytes:
++    """Simulate a realistic numerical telemetry frame (floats)."""
++    import struct as _s
++
++    values = [
++        200.0 + idx * 0.1,   # speed
++        8000.0 + idx * 0.5,  # rpm
++        0.75,                 # throttle
++        0.0,                  # brake
++        4.0,                  # gear
++        0.02,                 # steering
++        95.0,                 # tyre_fl
++        96.0,                 # tyre_fr
++        94.0,                 # tyre_rl
++        93.0,                 # tyre_rr
++        45.0,                 # fuel
++        350.0,                # brake_temp
++        0.0,                  # drs
++        0.0,                  # pit
++        0.0,                  # flag
++        float(idx),           # timestamp
++    ]
++    return _s.pack(f"<{len(values)}f", *values)
++
++
++# ---------------------------------------------------------------------------
++# Basic round-trip
++# ---------------------------------------------------------------------------
++
++
++class TestRoundTrip:
++    """Write frames, finalize, read back — data must match."""
++
++    @pytest.mark.parametrize("compressor", ["lz4", "zstd"])
++    def test_basic_roundtrip(self, compressor: str, tmp_path):
++        path = tmp_path / "test.tlm"
++        frames = [_make_frame(i) for i in range(100)]
++
++        rec = CompressedRecorder(path, compressor=compressor, chunk_frames=32)
++        rec.start()
++        for f in frames:
++            rec.write_frame(f)
++        rec.finalize()
++
++        with CompressedReader(path) as reader:
++            assert reader.total_frames == 100
++            assert reader.compressor == compressor
++            recovered = list(reader.iter_frames())
++
++        assert len(recovered) == len(frames)
++        for orig, got in zip(frames, recovered):
++            assert orig == got
++
++    def test_single_frame_chunk(self, tmp_path):
++        """Even with chunk_frames=1, round-trip must work."""
++        path = tmp_path / "single.tlm"
++        frames = [_make_frame(i, size=64) for i in range(10)]
++
++        rec = CompressedRecorder(path, chunk_frames=1)
++        rec.start()
++        for f in frames:
++            rec.write_frame(f)
++        rec.finalize()
++
++        with CompressedReader(path) as reader:
++            assert reader.total_chunks == 10
++            assert reader.total_frames == 10
++            assert list(reader.iter_frames()) == frames
++
++    def test_partial_last_chunk(self, tmp_path):
++        """Frames that don't fill the last chunk must still be written."""
++        path = tmp_path / "partial.tlm"
++        frames = [_make_frame(i) for i in range(50)]
++
++        rec = CompressedRecorder(path, chunk_frames=32)
++        rec.start()
++        for f in frames:
++            rec.write_frame(f)
++        rec.finalize()
++
++        with CompressedReader(path) as reader:
++            assert reader.total_frames == 50
++            assert reader.total_chunks == 2
++            assert list(reader.iter_frames()) == frames
++
++
++# ---------------------------------------------------------------------------
++# Random access via chunk index
++# ---------------------------------------------------------------------------
++
++
++class TestRandomAccess:
++    def test_read_chunk_by_index(self, tmp_path):
++        path = tmp_path / "seek.tlm"
++        chunk_size = 16
++        n_frames = 80
++        frames = [_make_frame(i, size=128) for i in range(n_frames)]
++
++        rec = CompressedRecorder(path, chunk_frames=chunk_size)
++        rec.start()
++        for f in frames:
++            rec.write_frame(f)
++        rec.finalize()
++
++        with CompressedReader(path) as reader:
++            assert reader.total_chunks == 5  # 80 / 16
++            chunk3 = reader.read_chunk(3)
++            expected = frames[48:64]
++            assert chunk3 == expected
++
++    def test_chunk_index_out_of_range(self, tmp_path):
++        path = tmp_path / "oob.tlm"
++        rec = CompressedRecorder(path, chunk_frames=8)
++        rec.start()
++        for i in range(8):
++            rec.write_frame(_make_frame(i))
++        rec.finalize()
++
++        with CompressedReader(path) as reader:
++            with pytest.raises(IndexError):
++                reader.read_chunk(5)
++
++
++# ---------------------------------------------------------------------------
++# Compression effectiveness
++# ---------------------------------------------------------------------------
++
++
++class TestCompression:
++    def test_file_smaller_than_raw(self, tmp_path):
++        """Compressed file should be significantly smaller than raw data."""
++        path = tmp_path / "ratio.tlm"
++        frames = [_make_telemetry_frame(i) for i in range(1000)]
++        raw_size = sum(len(f) for f in frames)
++
++        rec = CompressedRecorder(path, chunk_frames=64)
++        rec.start()
++        for f in frames:
++            rec.write_frame(f)
++        rec.finalize()
++
++        compressed_size = path.stat().st_size
++        ratio = raw_size / compressed_size
++        assert ratio > 2.0, f"Compression ratio {ratio:.1f}x is too low"
++
++    @pytest.mark.parametrize("compressor", ["lz4", "zstd"])
++    def test_both_compressors_shrink(self, compressor, tmp_path):
++        path = tmp_path / f"shrink_{compressor}.tlm"
++        frames = [_make_telemetry_frame(i) for i in range(500)]
++        raw_size = sum(len(f) for f in frames)
++
++        rec = CompressedRecorder(path, compressor=compressor, chunk_frames=64)
++        rec.start()
++        for f in frames:
++            rec.write_frame(f)
++        rec.finalize()
++
++        assert path.stat().st_size < raw_size
++
++
++# ---------------------------------------------------------------------------
++# Latency
++# ---------------------------------------------------------------------------
++
++
++class TestLatency:
++    def test_write_latency_under_1ms(self, tmp_path):
++        """Per-frame write_frame() call should be well under 1ms."""
++        path = tmp_path / "latency.tlm"
++        frame = _make_telemetry_frame(0)
++
++        rec = CompressedRecorder(path, chunk_frames=64)
++        rec.start()
++
++        n = 1000
++        t0 = time.perf_counter()
++        for i in range(n):
++            rec.write_frame(frame)
++        t1 = time.perf_counter()
++        rec.finalize()
++
++        avg_us = (t1 - t0) / n * 1e6
++        assert avg_us < 1000, f"Average write latency {avg_us:.0f} µs exceeds 1 ms"
++
++
++# ---------------------------------------------------------------------------
++# Edge cases
++# ---------------------------------------------------------------------------
++
++
++class TestEdgeCases:
++    def test_empty_recording(self, tmp_path):
++        """Finalize with zero frames should produce a valid (empty) file."""
++        path = tmp_path / "empty.tlm"
++        rec = CompressedRecorder(path, chunk_frames=32)
++        rec.start()
++        rec.finalize()
++
++        with CompressedReader(path) as reader:
++            assert reader.total_frames == 0
++            assert reader.total_chunks == 0
++            assert list(reader.iter_frames()) == []
++
++    def test_finalize_without_start_is_noop(self, tmp_path):
++        """Calling finalize() before start() should not raise."""
++        rec = CompressedRecorder(tmp_path / "noop.tlm")
++        rec.finalize()
++
++    def test_write_before_start_raises(self, tmp_path):
++        rec = CompressedRecorder(tmp_path / "nostart.tlm")
++        with pytest.raises(RuntimeError):
++            rec.write_frame(b"data")
++
++    def test_double_start_raises(self, tmp_path):
++        path = tmp_path / "double.tlm"
++        rec = CompressedRecorder(path)
++        rec.start()
++        with pytest.raises(RuntimeError):
++            rec.start()
++        rec.finalize()
++
++    def test_invalid_compressor_raises(self, tmp_path):
++        with pytest.raises(ValueError):
++            CompressedRecorder(tmp_path / "bad.tlm", compressor="deflate")
++
++    def test_variable_frame_sizes(self, tmp_path):
++        """Frames of different sizes must round-trip correctly."""
++        path = tmp_path / "varsz.tlm"
++        frames = [os.urandom(i * 10 + 1) for i in range(50)]
++
++        rec = CompressedRecorder(path, chunk_frames=8)
++        rec.start()
++        for f in frames:
++            rec.write_frame(f)
++        rec.finalize()
++
++        with CompressedReader(path) as reader:
++            assert list(reader.iter_frames()) == frames
++
++
++# ---------------------------------------------------------------------------
++# File format validation
++# ---------------------------------------------------------------------------
++
++
++class TestFileFormat:
++    def test_magic_and_version(self, tmp_path):
++        path = tmp_path / "fmt.tlm"
++        rec = CompressedRecorder(path)
++        rec.start()
++        rec.write_frame(b"hello")
++        rec.finalize()
++
++        with open(path, "rb") as f:
++            magic = f.read(4)
++            assert magic == MAGIC
++            version = struct.unpack("<I", f.read(4))[0]
++            assert version == 1
++
++    def test_bad_magic_rejected(self, tmp_path):
++        path = tmp_path / "bad_magic.tlm"
++        with open(path, "wb") as f:
++            f.write(b"BAAD" + b"\x00" * 28)
++
++        with pytest.raises(ValueError, match="Bad magic"):
++            with CompressedReader(path) as reader:
++                pass

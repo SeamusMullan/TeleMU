@@ -1,0 +1,1593 @@
+diff --git a/.gitignore b/.gitignore
+index 4057f33..50498ae 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,2 +1,4 @@
+ node_modules/
+ .venv/
++__pycache__/
++*.pyc
+diff --git a/LMUPI/lmupi/__pycache__/__init__.cpython-313.pyc b/LMUPI/lmupi/__pycache__/__init__.cpython-313.pyc
+deleted file mode 100644
+index 63b4eed..0000000
+Binary files a/LMUPI/lmupi/__pycache__/__init__.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/__init__.cpython-314.pyc b/LMUPI/lmupi/__pycache__/__init__.cpython-314.pyc
+deleted file mode 100644
+index 9209b28..0000000
+Binary files a/LMUPI/lmupi/__pycache__/__init__.cpython-314.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/advanced.cpython-313.pyc b/LMUPI/lmupi/__pycache__/advanced.cpython-313.pyc
+deleted file mode 100644
+index 29ebe13..0000000
+Binary files a/LMUPI/lmupi/__pycache__/advanced.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/analyzer.cpython-313.pyc b/LMUPI/lmupi/__pycache__/analyzer.cpython-313.pyc
+deleted file mode 100644
+index 8e259c5..0000000
+Binary files a/LMUPI/lmupi/__pycache__/analyzer.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/app.cpython-313.pyc b/LMUPI/lmupi/__pycache__/app.cpython-313.pyc
+deleted file mode 100644
+index 7c1b042..0000000
+Binary files a/LMUPI/lmupi/__pycache__/app.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/app.cpython-314.pyc b/LMUPI/lmupi/__pycache__/app.cpython-314.pyc
+deleted file mode 100644
+index 758f967..0000000
+Binary files a/LMUPI/lmupi/__pycache__/app.cpython-314.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/dashboard.cpython-313.pyc b/LMUPI/lmupi/__pycache__/dashboard.cpython-313.pyc
+deleted file mode 100644
+index 65b7d12..0000000
+Binary files a/LMUPI/lmupi/__pycache__/dashboard.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/splitter.cpython-313.pyc b/LMUPI/lmupi/__pycache__/splitter.cpython-313.pyc
+deleted file mode 100644
+index 0253ae6..0000000
+Binary files a/LMUPI/lmupi/__pycache__/splitter.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/telemetry_reader.cpython-313.pyc b/LMUPI/lmupi/__pycache__/telemetry_reader.cpython-313.pyc
+deleted file mode 100644
+index e3f823a..0000000
+Binary files a/LMUPI/lmupi/__pycache__/telemetry_reader.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/theme.cpython-313.pyc b/LMUPI/lmupi/__pycache__/theme.cpython-313.pyc
+deleted file mode 100644
+index 71795d2..0000000
+Binary files a/LMUPI/lmupi/__pycache__/theme.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/track_viewer.cpython-313.pyc b/LMUPI/lmupi/__pycache__/track_viewer.cpython-313.pyc
+deleted file mode 100644
+index 85d95e9..0000000
+Binary files a/LMUPI/lmupi/__pycache__/track_viewer.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/__pycache__/widgets.cpython-313.pyc b/LMUPI/lmupi/__pycache__/widgets.cpython-313.pyc
+deleted file mode 100644
+index 51a4693..0000000
+Binary files a/LMUPI/lmupi/__pycache__/widgets.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/sharedmem/__pycache__/__init__.cpython-313.pyc b/LMUPI/lmupi/sharedmem/__pycache__/__init__.cpython-313.pyc
+deleted file mode 100644
+index 02d036d..0000000
+Binary files a/LMUPI/lmupi/sharedmem/__pycache__/__init__.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/sharedmem/__pycache__/lmu_data.cpython-313.pyc b/LMUPI/lmupi/sharedmem/__pycache__/lmu_data.cpython-313.pyc
+deleted file mode 100644
+index 15f0308..0000000
+Binary files a/LMUPI/lmupi/sharedmem/__pycache__/lmu_data.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/sharedmem/__pycache__/lmu_mmap.cpython-313.pyc b/LMUPI/lmupi/sharedmem/__pycache__/lmu_mmap.cpython-313.pyc
+deleted file mode 100644
+index 1f8de10..0000000
+Binary files a/LMUPI/lmupi/sharedmem/__pycache__/lmu_mmap.cpython-313.pyc and /dev/null differ
+diff --git a/LMUPI/lmupi/telemetry_recorder.py b/LMUPI/lmupi/telemetry_recorder.py
+new file mode 100644
+index 0000000..29ae3a3
+--- /dev/null
++++ b/LMUPI/lmupi/telemetry_recorder.py
+@@ -0,0 +1,456 @@
++"""TelemetryRecorder — QThread-based engine that captures shared memory data
++and writes compressed ``.tmu`` files.
++
++Runs alongside :class:`TelemetryReader` and records telemetry data from
++LMU's shared memory into the TeleMU binary format with LZ4 compression.
++
++Usage::
++
++    recorder = TelemetryRecorder(sample_rate=60)
++    recorder.start_recording("/path/to/output.tmu")
++    # ... later ...
++    recorder.stop_recording()
++
++Signals:
++    recording_started: Emitted when recording begins writing frames.
++    recording_stopped: Emitted when the file is finalized and closed.
++    error(str): Emitted with an error message on failure.
++    stats_updated(dict): Emitted periodically with recording statistics.
++"""
++
++from __future__ import annotations
++
++import collections
++import logging
++import time
++from datetime import datetime, timezone
++from pathlib import Path
++
++from PySide6.QtCore import QMutex, QMutexLocker, QThread, Signal
++
++from lmupi.sharedmem.lmu_data import LMUConstants, LMUObjectOut
++from lmupi.sharedmem.lmu_mmap import MMapControl
++from lmupi.tmu_compression import StreamingCompressor
++from lmupi.tmu_format import (
++    CHUNK_INDEX_SIZE,
++    ChannelDef,
++    SessionMetadata,
++    encode_channel_table,
++    encode_chunk_index,
++    encode_footer,
++    encode_header,
++)
++from lmupi.tmu_serializer import TelemetrySerializer
++
++logger = logging.getLogger(__name__)
++
++# Supported sample rates (Hz) and their poll intervals (ms)
++SAMPLE_RATES: dict[int, int] = {
++    10: 100,
++    20: 50,
++    30: 33,
++    60: 16,
++}
++
++# How many frames to accumulate per LZ4 chunk
++_FRAMES_PER_CHUNK = 64
++
++# Stats update interval in frames
++_STATS_INTERVAL_FRAMES = 30
++
++
++class _RingBuffer:
++    """Thread-safe fixed-size ring buffer to decouple reading from disk writes.
++
++    Producers (the polling loop) append frame bytes; the consumer (the
++    disk-write section) drains all available frames in bulk.
++    """
++
++    def __init__(self, capacity: int = 1024) -> None:
++        self._buf: collections.deque[bytes] = collections.deque(maxlen=capacity)
++        self._mutex = QMutex()
++        self._drop_count = 0
++
++    def put(self, data: bytes) -> bool:
++        """Append a frame.  Returns ``False`` if the buffer was full and
++        the oldest frame was dropped."""
++        with QMutexLocker(self._mutex):
++            was_full = len(self._buf) == self._buf.maxlen
++            self._buf.append(data)
++            if was_full:
++                self._drop_count += 1
++            return not was_full
++
++    def drain(self) -> list[bytes]:
++        """Remove and return all buffered frames."""
++        with QMutexLocker(self._mutex):
++            items = list(self._buf)
++            self._buf.clear()
++            return items
++
++    @property
++    def drop_count(self) -> int:
++        with QMutexLocker(self._mutex):
++            return self._drop_count
++
++    def __len__(self) -> int:
++        with QMutexLocker(self._mutex):
++            return len(self._buf)
++
++
++class TelemetryRecorder(QThread):
++    """Background thread that captures shared memory data and writes
++    compressed ``.tmu`` files.
++
++    The recorder opens its own shared memory connection (copy-access) so
++    it can run independently of :class:`TelemetryReader`.
++
++    Args:
++        sample_rate: Recording sample rate in Hz (10, 20, 30, or 60).
++        channels: Optional list of channel definitions.  If ``None``,
++            the default channel set from :mod:`tmu_serializer` is used.
++        ring_capacity: Maximum frames the ring buffer can hold.
++        parent: Optional Qt parent.
++    """
++
++    recording_started = Signal()
++    recording_stopped = Signal()
++    error = Signal(str)
++    stats_updated = Signal(dict)
++
++    def __init__(
++        self,
++        sample_rate: int = 60,
++        channels: list[ChannelDef] | None = None,
++        ring_capacity: int = 1024,
++        parent=None,
++    ) -> None:
++        super().__init__(parent)
++
++        if sample_rate not in SAMPLE_RATES:
++            raise ValueError(
++                f"Unsupported sample rate {sample_rate}Hz.  "
++                f"Choose from {sorted(SAMPLE_RATES)}."
++            )
++
++        self._sample_rate = sample_rate
++        self._poll_ms = SAMPLE_RATES[sample_rate]
++        self._serializer = TelemetrySerializer(channels)
++        self._ring = _RingBuffer(ring_capacity)
++
++        # Thread control (guarded by _state_mutex)
++        self._state_mutex = QMutex()
++        self._running = False
++        self._paused = False
++        self._output_path: str | None = None
++
++    # ── Public API (thread-safe) ──────────────────────────
++
++    def start_recording(self, output_path: str) -> None:
++        """Begin recording to *output_path*.
++
++        The file will be created/truncated.  The thread is started
++        automatically if not already running.
++        """
++        with QMutexLocker(self._state_mutex):
++            if self._running:
++                return
++            self._output_path = output_path
++            self._running = True
++            self._paused = False
++        self.start()
++
++    def stop_recording(self) -> None:
++        """Signal the recorder to stop, finalize the file, and exit."""
++        with QMutexLocker(self._state_mutex):
++            self._running = False
++        self.wait(5000)
++
++    def pause_recording(self) -> None:
++        """Pause recording — frames are not captured while paused."""
++        with QMutexLocker(self._state_mutex):
++            self._paused = True
++
++    def resume_recording(self) -> None:
++        """Resume a paused recording."""
++        with QMutexLocker(self._state_mutex):
++            self._paused = False
++
++    @property
++    def is_recording(self) -> bool:
++        with QMutexLocker(self._state_mutex):
++            return self._running
++
++    @property
++    def is_paused(self) -> bool:
++        with QMutexLocker(self._state_mutex):
++            return self._paused
++
++    # ── Thread entry point ────────────────────────────────
++
++    def run(self) -> None:
++        """Thread main loop — poll shared memory, serialize, compress, write."""
++        output_path: str | None
++        with QMutexLocker(self._state_mutex):
++            output_path = self._output_path
++
++        if not output_path:
++            self.error.emit("No output path specified")
++            return
++
++        # ── Open shared memory ────────────────────────────
++        mmap = self._open_shared_memory()
++        if mmap is None:
++            return
++
++        # ── Open output file and write header ─────────────
++        fh = self._open_output_file(output_path, mmap)
++        if fh is None:
++            mmap.close()
++            return
++
++        self.recording_started.emit()
++        logger.info("TelemetryRecorder: started recording to %s", output_path)
++
++        # ── Main recording loop ───────────────────────────
++        compressor = StreamingCompressor(frames_per_chunk=_FRAMES_PER_CHUNK)
++        bytes_written = self._data_start_offset
++
++        try:
++            bytes_written = self._recording_loop(
++                mmap, fh, compressor, bytes_written,
++            )
++        except Exception as exc:
++            self.error.emit(f"Recording error: {exc}")
++
++        # ── Finalize file ─────────────────────────────────
++        self._finalize_file(fh, mmap, compressor, bytes_written, output_path)
++
++    # ── Recording helpers ─────────────────────────────────
++
++    def _open_shared_memory(self) -> MMapControl | None:
++        """Open shared memory; return the control object or None on failure."""
++        try:
++            mmap = MMapControl(
++                LMUConstants.LMU_SHARED_MEMORY_FILE,
++                LMUObjectOut,
++            )
++            mmap.create(access_mode=0)
++            return mmap
++        except Exception as exc:
++            self.error.emit(f"Could not open shared memory: {exc}")
++            with QMutexLocker(self._state_mutex):
++                self._running = False
++            return None
++
++    def _open_output_file(self, output_path: str, mmap: MMapControl):
++        """Open the output file and write header/metadata/channel table.
++
++        Returns the file handle, or ``None`` on failure.
++        """
++        try:
++            fh = open(output_path, "wb")
++        except Exception as exc:
++            self.error.emit(f"Could not open output file: {exc}")
++            with QMutexLocker(self._state_mutex):
++                self._running = False
++            return None
++
++        serializer = self._serializer
++        metadata = self._build_metadata(mmap)
++        meta_bytes = metadata.to_json_bytes()
++        channels = serializer.channels
++        ch_table_bytes = encode_channel_table(channels)
++
++        from lmupi.tmu_format import HEADER_SIZE
++        metadata_offset = HEADER_SIZE
++        metadata_size = len(meta_bytes)
++        channel_table_offset = metadata_offset + metadata_size
++        channel_table_size = len(ch_table_bytes)
++        self._data_start_offset = channel_table_offset + channel_table_size
++
++        header = encode_header(
++            num_channels=len(channels),
++            sample_rate=self._sample_rate,
++            metadata_offset=metadata_offset,
++            metadata_size=metadata_size,
++            channel_table_offset=channel_table_offset,
++            channel_table_size=channel_table_size,
++            data_start_offset=self._data_start_offset,
++        )
++
++        try:
++            fh.write(header)
++            fh.write(meta_bytes)
++            fh.write(ch_table_bytes)
++        except Exception as exc:
++            self.error.emit(f"Error writing file header: {exc}")
++            fh.close()
++            with QMutexLocker(self._state_mutex):
++                self._running = False
++            return None
++
++        return fh
++
++    def _recording_loop(
++        self,
++        mmap: MMapControl,
++        fh,
++        compressor: StreamingCompressor,
++        bytes_written: int,
++    ) -> int:
++        """Run the main poll → serialize → compress → write loop.
++
++        Returns the updated ``bytes_written`` value.
++        """
++        serializer = self._serializer
++        start_time = time.monotonic()
++        stats_counter = 0
++
++        while True:
++            with QMutexLocker(self._state_mutex):
++                if not self._running:
++                    break
++                paused = self._paused
++
++            if not paused:
++                self._poll_and_enqueue(mmap, serializer)
++                bytes_written = self._drain_and_write(
++                    fh, compressor, bytes_written,
++                )
++
++                stats_counter += 1
++                if stats_counter >= _STATS_INTERVAL_FRAMES:
++                    stats_counter = 0
++                    elapsed = time.monotonic() - start_time
++                    self.stats_updated.emit({
++                        "frames": compressor.total_frames,
++                        "bytes_written": bytes_written,
++                        "elapsed_seconds": elapsed,
++                        "drops": self._ring.drop_count,
++                        "ring_usage": len(self._ring),
++                    })
++
++            self.msleep(self._poll_ms)
++
++        return bytes_written
++
++    def _poll_and_enqueue(
++        self, mmap: MMapControl, serializer: TelemetrySerializer,
++    ) -> None:
++        """Read one sample from shared memory and push to the ring buffer."""
++        try:
++            mmap.update()
++        except Exception:
++            return  # skip this frame if update fails
++
++        data = mmap.data
++        if data is None:
++            return
++        if not data.generic.gameVersion:
++            return
++
++        tele = data.telemetry
++        if not tele.playerHasVehicle:
++            return
++
++        idx = tele.playerVehicleIdx
++        if not (0 <= idx < LMUConstants.MAX_MAPPED_VEHICLES):
++            return
++
++        vt = tele.telemInfo[idx]
++        vs = data.scoring.vehScoringInfo[idx]
++        frame_bytes = serializer.serialize_frame(vt.mElapsedTime, vt, vs)
++        self._ring.put(frame_bytes)
++
++    def _drain_and_write(
++        self, fh, compressor: StreamingCompressor, bytes_written: int,
++    ) -> int:
++        """Drain the ring buffer and write compressed chunks to *fh*."""
++        for frame in self._ring.drain():
++            chunk = compressor.add_frame(frame)
++            if chunk is not None:
++                compressor.chunk_indices[-1].file_offset = bytes_written
++                fh.write(chunk)
++                bytes_written += len(chunk)
++        return bytes_written
++
++    def _finalize_file(
++        self,
++        fh,
++        mmap: MMapControl,
++        compressor: StreamingCompressor,
++        bytes_written: int,
++        output_path: str,
++    ) -> None:
++        """Flush remaining data, write index table and footer, close files."""
++        try:
++            # Drain remaining frames from ring buffer
++            bytes_written = self._drain_and_write(fh, compressor, bytes_written)
++
++            # Flush any remaining frames in the compressor
++            last_chunk = compressor.flush()
++            if last_chunk is not None:
++                compressor.chunk_indices[-1].file_offset = bytes_written
++                fh.write(last_chunk)
++                bytes_written += len(last_chunk)
++
++            # Write chunk index table
++            index_table_offset = bytes_written
++            for entry in compressor.chunk_indices:
++                fh.write(encode_chunk_index(entry))
++
++            # Write footer
++            footer = encode_footer(
++                total_frames=compressor.total_frames,
++                index_table_offset=index_table_offset,
++                index_entry_count=len(compressor.chunk_indices),
++            )
++            fh.write(footer)
++            fh.flush()
++            logger.info(
++                "TelemetryRecorder: finalized %s — %d frames, %d chunks",
++                output_path,
++                compressor.total_frames,
++                len(compressor.chunk_indices),
++            )
++        except Exception as exc:
++            self.error.emit(f"Error finalizing recording: {exc}")
++        finally:
++            fh.close()
++            try:
++                mmap.close()
++            except Exception:
++                pass
++            with QMutexLocker(self._state_mutex):
++                self._running = False
++            self.recording_stopped.emit()
++            logger.info("TelemetryRecorder: stopped")
++
++    # ── Helpers ───────────────────────────────────────────
++
++    def _build_metadata(self, mmap: MMapControl) -> SessionMetadata:
++        """Extract session metadata from current shared memory state."""
++        meta = SessionMetadata(
++            sample_rate=self._sample_rate,
++            date=datetime.now(timezone.utc).isoformat(),
++        )
++        try:
++            mmap.update()
++            data = mmap.data
++            if data is not None and data.generic.gameVersion:
++                scor = data.scoring.scoringInfo
++                meta.track = scor.mTrackName.decode("utf-8", errors="replace").rstrip("\x00")
++
++                tele = data.telemetry
++                if tele.playerHasVehicle:
++                    idx = tele.playerVehicleIdx
++                    if 0 <= idx < LMUConstants.MAX_MAPPED_VEHICLES:
++                        vt = tele.telemInfo[idx]
++                        meta.car = vt.mVehicleName.decode("utf-8", errors="replace").rstrip("\x00")
++
++                        vs = data.scoring.vehScoringInfo[idx]
++                        meta.driver = vs.mDriverName.decode("utf-8", errors="replace").rstrip("\x00")
++        except Exception:
++            pass  # metadata is best-effort
++        return meta
+diff --git a/LMUPI/lmupi/tmu_compression.py b/LMUPI/lmupi/tmu_compression.py
+new file mode 100644
+index 0000000..e15425c
+--- /dev/null
++++ b/LMUPI/lmupi/tmu_compression.py
+@@ -0,0 +1,95 @@
++"""LZ4 streaming compression for telemetry recordings.
++
++Provides a streaming compressor that accumulates raw frames into chunks
++and compresses each chunk with LZ4 frame compression.  A chunk index
++is maintained so the file remains seekable after finalization.
++"""
++
++from __future__ import annotations
++
++import lz4.frame
++
++from lmupi.tmu_format import ChunkIndex
++
++
++class StreamingCompressor:
++    """Accumulates raw frame data and compresses in chunks.
++
++    Args:
++        frames_per_chunk: Number of frames to accumulate before compressing
++            a chunk.  Larger values improve compression ratio; smaller values
++            reduce latency and memory usage.
++    """
++
++    def __init__(self, frames_per_chunk: int = 64) -> None:
++        self._frames_per_chunk = frames_per_chunk
++        self._buffer = bytearray()
++        self._frame_count = 0          # frames in current buffer
++        self._total_frames = 0         # total frames across all chunks
++        self._chunk_indices: list[ChunkIndex] = []
++
++    @property
++    def chunk_indices(self) -> list[ChunkIndex]:
++        """Return the list of chunk index entries written so far."""
++        return list(self._chunk_indices)
++
++    @property
++    def total_frames(self) -> int:
++        return self._total_frames
++
++    @property
++    def pending_frames(self) -> int:
++        """Number of frames buffered but not yet compressed."""
++        return self._frame_count
++
++    def add_frame(self, frame_data: bytes) -> bytes | None:
++        """Add a raw frame to the buffer.
++
++        Returns:
++            Compressed chunk bytes if the buffer is full, otherwise ``None``.
++        """
++        self._buffer.extend(frame_data)
++        self._frame_count += 1
++        self._total_frames += 1
++
++        if self._frame_count >= self._frames_per_chunk:
++            return self._flush_buffer()
++        return None
++
++    def flush(self) -> bytes | None:
++        """Flush any remaining buffered frames as a compressed chunk.
++
++        Returns:
++            Compressed chunk bytes if there were pending frames, otherwise
++            ``None``.
++        """
++        if self._frame_count > 0:
++            return self._flush_buffer()
++        return None
++
++    def _flush_buffer(self) -> bytes:
++        """Compress the current buffer and return compressed bytes."""
++        compressed = lz4.frame.compress(
++            bytes(self._buffer),
++            compression_level=0,  # fast mode
++            block_size=lz4.frame.BLOCKSIZE_MAX256KB,
++        )
++
++        first_frame_idx = self._total_frames - self._frame_count
++        entry = ChunkIndex(
++            file_offset=0,  # placeholder — set by caller
++            compressed_size=len(compressed),
++            frame_count=self._frame_count,
++            first_frame_idx=first_frame_idx,
++        )
++        self._chunk_indices.append(entry)
++
++        self._buffer.clear()
++        self._frame_count = 0
++
++        return compressed
++
++
++def decompress_chunk(data: bytes) -> bytes:
++    """Decompress a single LZ4-compressed chunk."""
++    return lz4.frame.decompress(data)
+diff --git a/LMUPI/lmupi/tmu_format.py b/LMUPI/lmupi/tmu_format.py
+new file mode 100644
+index 0000000..84faf18
+--- /dev/null
++++ b/LMUPI/lmupi/tmu_format.py
+@@ -0,0 +1,254 @@
++""".tmu binary file format definitions.
++
++Defines the TeleMU binary file format for recording telemetry sessions.
++
++File layout:
++    [Header]              — magic, version, metadata offsets
++    [Session metadata]    — JSON block with track, car, driver, date, sample rate
++    [Channel table]       — list of (name, type_code, unit, byte_offset) entries
++    [Compressed frames…]  — LZ4-compressed chunks, each containing N frames
++    [Chunk index table]   — offsets and sizes for each compressed chunk
++    [Footer]              — total frames, index table offset, checksum
++"""
++
++from __future__ import annotations
++
++import json
++import struct
++from dataclasses import dataclass, field
++from enum import IntEnum
++
++# ── Constants ─────────────────────────────────────────────
++
++TMU_MAGIC = b"TMU\x00"  # 4-byte magic
++TMU_VERSION = 1
++
++# Type codes for channel data
++class ChannelType(IntEnum):
++    FLOAT64 = 0  # 8-byte double
++    FLOAT32 = 1  # 4-byte float
++    INT32 = 2    # 4-byte signed int
++    INT16 = 3    # 2-byte signed int
++    UINT8 = 4    # 1-byte unsigned int
++    BOOL = 5     # 1-byte boolean
++
++
++# struct format characters for each type code
++CHANNEL_STRUCT_FMT = {
++    ChannelType.FLOAT64: "d",
++    ChannelType.FLOAT32: "f",
++    ChannelType.INT32: "i",
++    ChannelType.INT16: "h",
++    ChannelType.UINT8: "B",
++    ChannelType.BOOL: "?",
++}
++
++CHANNEL_TYPE_SIZE = {
++    ChannelType.FLOAT64: 8,
++    ChannelType.FLOAT32: 4,
++    ChannelType.INT32: 4,
++    ChannelType.INT16: 2,
++    ChannelType.UINT8: 1,
++    ChannelType.BOOL: 1,
++}
++
++
++# ── Data classes ──────────────────────────────────────────
++
++@dataclass
++class ChannelDef:
++    """Definition of a single telemetry channel."""
++    name: str
++    type_code: ChannelType
++    unit: str
++    byte_offset: int = 0  # offset within a frame (computed at write time)
++
++
++@dataclass
++class SessionMetadata:
++    """Session-level metadata stored as JSON in the file."""
++    track: str = ""
++    car: str = ""
++    driver: str = ""
++    date: str = ""
++    sample_rate: int = 60
++    extra: dict = field(default_factory=dict)
++
++    def to_json_bytes(self) -> bytes:
++        d = {
++            "track": self.track,
++            "car": self.car,
++            "driver": self.driver,
++            "date": self.date,
++            "sample_rate": self.sample_rate,
++        }
++        d.update(self.extra)
++        return json.dumps(d, separators=(",", ":")).encode("utf-8")
++
++    @classmethod
++    def from_json_bytes(cls, data: bytes) -> SessionMetadata:
++        d = json.loads(data.decode("utf-8"))
++        return cls(
++            track=d.get("track", ""),
++            car=d.get("car", ""),
++            driver=d.get("driver", ""),
++            date=d.get("date", ""),
++            sample_rate=d.get("sample_rate", 60),
++            extra={k: v for k, v in d.items()
++                   if k not in ("track", "car", "driver", "date", "sample_rate")},
++        )
++
++
++@dataclass
++class ChunkIndex:
++    """Index entry for a compressed chunk."""
++    file_offset: int      # byte offset in file
++    compressed_size: int   # compressed size in bytes
++    frame_count: int       # number of frames in this chunk
++    first_frame_idx: int   # index of first frame in chunk
++
++
++# ── Header ────────────────────────────────────────────────
++# Layout (40 bytes):
++#   4B  magic ("TMU\0")
++#   2B  version (uint16)
++#   2B  num_channels (uint16)
++#   4B  sample_rate (uint32)
++#   4B  metadata_offset (uint32)
++#   4B  metadata_size (uint32)
++#   4B  channel_table_offset (uint32)
++#   4B  channel_table_size (uint32)
++#   4B  data_start_offset (uint32)
++#   8B  reserved
++
++HEADER_FMT = "<4sHHIIIIIIQ"
++HEADER_SIZE = struct.calcsize(HEADER_FMT)
++
++# ── Footer ────────────────────────────────────────────────
++# Layout (24 bytes):
++#   8B  total_frames (uint64)
++#   8B  index_table_offset (uint64)
++#   4B  index_entry_count (uint32)
++#   4B  magic (TMU\0) — repeated for validation
++
++FOOTER_FMT = "<QQI4s"
++FOOTER_SIZE = struct.calcsize(FOOTER_FMT)
++
++# ── Channel table entry ──────────────────────────────────
++# Layout (per entry):
++#   1B  name_length (uint8)
++#   NB  name (utf-8)
++#   1B  type_code (uint8)
++#   1B  unit_length (uint8)
++#   NB  unit (utf-8)
++#   4B  byte_offset (uint32)
++
++# ── Chunk index entry ────────────────────────────────────
++# 24 bytes per entry
++CHUNK_INDEX_FMT = "<QIII"
++CHUNK_INDEX_SIZE = struct.calcsize(CHUNK_INDEX_FMT)
++
++
++def encode_header(
++    num_channels: int,
++    sample_rate: int,
++    metadata_offset: int,
++    metadata_size: int,
++    channel_table_offset: int,
++    channel_table_size: int,
++    data_start_offset: int,
++) -> bytes:
++    return struct.pack(
++        HEADER_FMT,
++        TMU_MAGIC,
++        TMU_VERSION,
++        num_channels,
++        sample_rate,
++        metadata_offset,
++        metadata_size,
++        channel_table_offset,
++        channel_table_size,
++        data_start_offset,
++        0,  # reserved
++    )
++
++
++def decode_header(data: bytes) -> dict:
++    (magic, version, num_channels, sample_rate,
++     metadata_offset, metadata_size,
++     channel_table_offset, channel_table_size,
++     data_start_offset, _reserved) = struct.unpack(HEADER_FMT, data[:HEADER_SIZE])
++    if magic != TMU_MAGIC:
++        raise ValueError(f"Invalid TMU magic: {magic!r}")
++    return {
++        "version": version,
++        "num_channels": num_channels,
++        "sample_rate": sample_rate,
++        "metadata_offset": metadata_offset,
++        "metadata_size": metadata_size,
++        "channel_table_offset": channel_table_offset,
++        "channel_table_size": channel_table_size,
++        "data_start_offset": data_start_offset,
++    }
++
++
++def encode_channel_table(channels: list[ChannelDef]) -> bytes:
++    parts: list[bytes] = []
++    for ch in channels:
++        name_bytes = ch.name.encode("utf-8")
++        unit_bytes = ch.unit.encode("utf-8")
++        parts.append(struct.pack("B", len(name_bytes)))
++        parts.append(name_bytes)
++        parts.append(struct.pack("B", ch.type_code))
++        parts.append(struct.pack("B", len(unit_bytes)))
++        parts.append(unit_bytes)
++        parts.append(struct.pack("<I", ch.byte_offset))
++    return b"".join(parts)
++
++
++def decode_channel_table(data: bytes, num_channels: int) -> list[ChannelDef]:
++    channels: list[ChannelDef] = []
++    offset = 0
++    for _ in range(num_channels):
++        name_len = data[offset]
++        offset += 1
++        name = data[offset:offset + name_len].decode("utf-8")
++        offset += name_len
++        type_code = ChannelType(data[offset])
++        offset += 1
++        unit_len = data[offset]
++        offset += 1
++        unit = data[offset:offset + unit_len].decode("utf-8")
++        offset += unit_len
++        byte_offset = struct.unpack_from("<I", data, offset)[0]
++        offset += 4
++        channels.append(ChannelDef(
++            name=name, type_code=type_code, unit=unit, byte_offset=byte_offset,
++        ))
++    return channels
++
++
++def encode_footer(total_frames: int, index_table_offset: int, index_entry_count: int) -> bytes:
++    return struct.pack(FOOTER_FMT, total_frames, index_table_offset, index_entry_count, TMU_MAGIC)
++
++
++def decode_footer(data: bytes) -> dict:
++    total_frames, index_table_offset, index_entry_count, magic = struct.unpack(FOOTER_FMT, data[-FOOTER_SIZE:])
++    if magic != TMU_MAGIC:
++        raise ValueError(f"Invalid TMU footer magic: {magic!r}")
++    return {
++        "total_frames": total_frames,
++        "index_table_offset": index_table_offset,
++        "index_entry_count": index_entry_count,
++    }
++
++
++def encode_chunk_index(entry: ChunkIndex) -> bytes:
++    return struct.pack(CHUNK_INDEX_FMT, entry.file_offset, entry.compressed_size,
++                       entry.frame_count, entry.first_frame_idx)
++
++
++def decode_chunk_index(data: bytes) -> ChunkIndex:
++    file_offset, compressed_size, frame_count, first_frame_idx = struct.unpack(CHUNK_INDEX_FMT, data)
++    return ChunkIndex(file_offset=file_offset, compressed_size=compressed_size,
++                      frame_count=frame_count, first_frame_idx=first_frame_idx)
+diff --git a/LMUPI/lmupi/tmu_serializer.py b/LMUPI/lmupi/tmu_serializer.py
+new file mode 100644
+index 0000000..c7ad965
+--- /dev/null
++++ b/LMUPI/lmupi/tmu_serializer.py
+@@ -0,0 +1,233 @@
++"""Binary serializer for LMU shared memory structs.
++
++Converts LMU shared memory telemetry and scoring data into flat binary
++frames suitable for writing to ``.tmu`` files.
++
++Each frame contains a timestamp followed by the values of all configured
++channels, packed according to their :class:`ChannelType`.
++"""
++
++from __future__ import annotations
++
++import math
++import struct
++
++from lmupi.tmu_format import (
++    CHANNEL_STRUCT_FMT,
++    CHANNEL_TYPE_SIZE,
++    ChannelDef,
++    ChannelType,
++)
++
++# Kelvin → Celsius offset
++_K2C = 273.15
++
++
++def _speed_from_local_vel(vel) -> float:
++    """Compute speed in km/h from local velocity vector (m/s)."""
++    return math.sqrt(vel.x ** 2 + vel.y ** 2 + vel.z ** 2) * 3.6
++
++
++# ── Default channel definitions ──────────────────────────
++
++def default_channels() -> list[ChannelDef]:
++    """Return the default set of telemetry channels to record.
++
++    This maps relevant fields from ``LMUVehicleTelemetry`` and
++    ``LMUVehicleScoring`` to named channels with appropriate units.
++    """
++    return [
++        # Core driving inputs / outputs
++        ChannelDef("Speed", ChannelType.FLOAT64, "km/h"),
++        ChannelDef("RPM", ChannelType.FLOAT64, "rpm"),
++        ChannelDef("Throttle", ChannelType.FLOAT64, "%"),
++        ChannelDef("Brake", ChannelType.FLOAT64, "%"),
++        ChannelDef("Steering", ChannelType.FLOAT64, "deg"),
++        ChannelDef("Gear", ChannelType.INT32, ""),
++        ChannelDef("Clutch", ChannelType.FLOAT64, "%"),
++        # Engine
++        ChannelDef("EngineWaterTemp", ChannelType.FLOAT64, "°C"),
++        ChannelDef("EngineOilTemp", ChannelType.FLOAT64, "°C"),
++        ChannelDef("EngineTorque", ChannelType.FLOAT64, "Nm"),
++        ChannelDef("EngineMaxRPM", ChannelType.FLOAT64, "rpm"),
++        # Fuel
++        ChannelDef("Fuel", ChannelType.FLOAT64, "L"),
++        ChannelDef("FuelCapacity", ChannelType.FLOAT64, "L"),
++        # Tyre temperatures (center, Kelvin→Celsius)
++        ChannelDef("TyreTempFL", ChannelType.FLOAT64, "°C"),
++        ChannelDef("TyreTempFR", ChannelType.FLOAT64, "°C"),
++        ChannelDef("TyreTempRL", ChannelType.FLOAT64, "°C"),
++        ChannelDef("TyreTempRR", ChannelType.FLOAT64, "°C"),
++        # Tyre pressures
++        ChannelDef("TyrePressFL", ChannelType.FLOAT64, "kPa"),
++        ChannelDef("TyrePressFR", ChannelType.FLOAT64, "kPa"),
++        ChannelDef("TyrePressRL", ChannelType.FLOAT64, "kPa"),
++        ChannelDef("TyrePressRR", ChannelType.FLOAT64, "kPa"),
++        # Brake temperatures
++        ChannelDef("BrakeTempFL", ChannelType.FLOAT64, "°C"),
++        ChannelDef("BrakeTempFR", ChannelType.FLOAT64, "°C"),
++        ChannelDef("BrakeTempRL", ChannelType.FLOAT64, "°C"),
++        ChannelDef("BrakeTempRR", ChannelType.FLOAT64, "°C"),
++        # Position
++        ChannelDef("PosX", ChannelType.FLOAT64, "m"),
++        ChannelDef("PosY", ChannelType.FLOAT64, "m"),
++        ChannelDef("PosZ", ChannelType.FLOAT64, "m"),
++        # Velocity
++        ChannelDef("VelX", ChannelType.FLOAT64, "m/s"),
++        ChannelDef("VelY", ChannelType.FLOAT64, "m/s"),
++        ChannelDef("VelZ", ChannelType.FLOAT64, "m/s"),
++        # Acceleration
++        ChannelDef("AccelX", ChannelType.FLOAT64, "m/s²"),
++        ChannelDef("AccelY", ChannelType.FLOAT64, "m/s²"),
++        ChannelDef("AccelZ", ChannelType.FLOAT64, "m/s²"),
++        # Ride height
++        ChannelDef("FrontRideHeight", ChannelType.FLOAT64, "m"),
++        ChannelDef("RearRideHeight", ChannelType.FLOAT64, "m"),
++        # Aero
++        ChannelDef("Drag", ChannelType.FLOAT64, ""),
++        ChannelDef("FrontDownforce", ChannelType.FLOAT64, ""),
++        ChannelDef("RearDownforce", ChannelType.FLOAT64, ""),
++        # Scoring (LapNumber = mTotalLaps + 1, i.e. current 1-indexed lap)
++        ChannelDef("LapNumber", ChannelType.INT32, ""),
++        ChannelDef("LapDist", ChannelType.FLOAT64, "m"),
++        ChannelDef("CurrentSector", ChannelType.INT32, ""),
++        ChannelDef("InPits", ChannelType.BOOL, ""),
++        # Lap times
++        ChannelDef("LastLapTime", ChannelType.FLOAT64, "s"),
++        ChannelDef("BestLapTime", ChannelType.FLOAT64, "s"),
++        # Session time
++        ChannelDef("ElapsedTime", ChannelType.FLOAT64, "s"),
++        ChannelDef("DeltaTime", ChannelType.FLOAT64, "s"),
++    ]
++
++
++# ── Serializer ────────────────────────────────────────────
++
++class TelemetrySerializer:
++    """Converts shared memory data into flat binary frames.
++
++    Args:
++        channels: List of channel definitions to serialize. If ``None``,
++            uses :func:`default_channels`.
++    """
++
++    def __init__(self, channels: list[ChannelDef] | None = None) -> None:
++        self._channels = channels if channels is not None else default_channels()
++        self._compute_offsets()
++        # Build the struct format string: timestamp (double) + all channels
++        fmt_parts = ["<d"]  # little-endian, timestamp double
++        for ch in self._channels:
++            fmt_parts.append(CHANNEL_STRUCT_FMT[ch.type_code])
++        self._fmt = "".join(fmt_parts)
++        self._frame_size = struct.calcsize(self._fmt)
++
++    def _compute_offsets(self) -> None:
++        """Compute byte offsets for each channel within a frame."""
++        offset = 8  # after timestamp (double = 8 bytes)
++        for ch in self._channels:
++            ch.byte_offset = offset
++            offset += CHANNEL_TYPE_SIZE[ch.type_code]
++
++    @property
++    def channels(self) -> list[ChannelDef]:
++        return self._channels
++
++    @property
++    def frame_size(self) -> int:
++        return self._frame_size
++
++    def serialize_frame(self, timestamp: float, vt, vs) -> bytes:
++        """Serialize one telemetry frame from shared memory structs.
++
++        Args:
++            timestamp: Session timestamp in seconds.
++            vt: ``LMUVehicleTelemetry`` struct (player vehicle).
++            vs: ``LMUVehicleScoring`` struct (player vehicle).
++
++        Returns:
++            Packed binary frame bytes.
++        """
++        values = self._extract_values(timestamp, vt, vs)
++        return struct.pack(self._fmt, *values)
++
++    def _extract_values(self, timestamp: float, vt, vs) -> list:
++        """Extract channel values from shared memory structs.
++
++        Handles type conversions (Kelvin→Celsius, etc.) as described
++        in issue #2 requirements.
++        """
++        speed = _speed_from_local_vel(vt.mLocalVel)
++
++        values: list = [timestamp]
++        for ch in self._channels:
++            values.append(self._read_channel(ch.name, vt, vs, speed))
++        return values
++
++    def _read_channel(self, name: str, vt, vs, speed: float):
++        """Read a single channel value from the shared memory structs."""
++        # fmt: off
++        readers = {
++            "Speed":            lambda: speed,
++            "RPM":              lambda: vt.mEngineRPM,
++            "Throttle":         lambda: vt.mUnfilteredThrottle * 100.0,
++            "Brake":            lambda: vt.mUnfilteredBrake * 100.0,
++            "Steering":         lambda: vt.mUnfilteredSteering * vt.mPhysicalSteeringWheelRange,
++            "Gear":             lambda: vt.mGear,
++            "Clutch":           lambda: vt.mUnfilteredClutch * 100.0,
++            "EngineWaterTemp":  lambda: vt.mEngineWaterTemp,
++            "EngineOilTemp":    lambda: vt.mEngineOilTemp,
++            "EngineTorque":     lambda: vt.mEngineTorque,
++            "EngineMaxRPM":     lambda: vt.mEngineMaxRPM,
++            "Fuel":             lambda: vt.mFuel,
++            "FuelCapacity":     lambda: vt.mFuelCapacity,
++            # Tyre temps (center index=1, Kelvin → Celsius)
++            "TyreTempFL":       lambda: vt.mWheels[0].mTemperature[1] - _K2C,
++            "TyreTempFR":       lambda: vt.mWheels[1].mTemperature[1] - _K2C,
++            "TyreTempRL":       lambda: vt.mWheels[2].mTemperature[1] - _K2C,
++            "TyreTempRR":       lambda: vt.mWheels[3].mTemperature[1] - _K2C,
++            # Tyre pressures
++            "TyrePressFL":      lambda: vt.mWheels[0].mPressure,
++            "TyrePressFR":      lambda: vt.mWheels[1].mPressure,
++            "TyrePressRL":      lambda: vt.mWheels[2].mPressure,
++            "TyrePressRR":      lambda: vt.mWheels[3].mPressure,
++            # Brake temps (Celsius)
++            "BrakeTempFL":      lambda: vt.mWheels[0].mBrakeTemp,
++            "BrakeTempFR":      lambda: vt.mWheels[1].mBrakeTemp,
++            "BrakeTempRL":      lambda: vt.mWheels[2].mBrakeTemp,
++            "BrakeTempRR":      lambda: vt.mWheels[3].mBrakeTemp,
++            # Position
++            "PosX":             lambda: vt.mPos.x,
++            "PosY":             lambda: vt.mPos.y,
++            "PosZ":             lambda: vt.mPos.z,
++            # Velocity
++            "VelX":             lambda: vt.mLocalVel.x,
++            "VelY":             lambda: vt.mLocalVel.y,
++            "VelZ":             lambda: vt.mLocalVel.z,
++            # Acceleration
++            "AccelX":           lambda: vt.mLocalAccel.x,
++            "AccelY":           lambda: vt.mLocalAccel.y,
++            "AccelZ":           lambda: vt.mLocalAccel.z,
++            # Ride height
++            "FrontRideHeight":  lambda: vt.mFrontRideHeight,
++            "RearRideHeight":   lambda: vt.mRearRideHeight,
++            # Aero
++            "Drag":             lambda: vt.mDrag,
++            "FrontDownforce":   lambda: vt.mFrontDownforce,
++            "RearDownforce":    lambda: vt.mRearDownforce,
++            # Scoring
++            "LapNumber":        lambda: vs.mTotalLaps + 1,
++            "LapDist":          lambda: vs.mLapDist,
++            "CurrentSector":    lambda: vt.mCurrentSector,
++            "InPits":           lambda: bool(vs.mInPits),
++            # Lap times
++            "LastLapTime":      lambda: vs.mLastLapTime,
++            "BestLapTime":      lambda: vs.mBestLapTime,
++            # Session time
++            "ElapsedTime":      lambda: vt.mElapsedTime,
++            "DeltaTime":        lambda: vt.mDeltaTime,
++        }
++        # fmt: on
++        reader = readers.get(name)
++        if reader is None:
++            return 0
++        return reader()
+diff --git a/LMUPI/pyproject.toml b/LMUPI/pyproject.toml
+index 6f9abd8..f580e11 100644
+--- a/LMUPI/pyproject.toml
++++ b/LMUPI/pyproject.toml
+@@ -6,6 +6,7 @@ readme = "README.md"
+ requires-python = ">=3.13"
+ dependencies = [
+     "duckdb>=1.4.4",
++    "lz4>=4.3.0",
+     "matplotlib>=3.10.8",
+     "numpy>=2.4.2",
+     "pyside6>=6.10.2",
+diff --git a/LMUPI/tests/__init__.py b/LMUPI/tests/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/LMUPI/tests/test_telemetry_recorder.py b/LMUPI/tests/test_telemetry_recorder.py
+new file mode 100644
+index 0000000..c412697
+--- /dev/null
++++ b/LMUPI/tests/test_telemetry_recorder.py
+@@ -0,0 +1,441 @@
++"""Tests for the .tmu format, binary serializer, LZ4 compression,
++and TelemetryRecorder (excluding Qt/shared-memory integration)."""
++
++from __future__ import annotations
++
++import struct
++import tempfile
++import unittest
++from pathlib import Path
++from types import SimpleNamespace
++
++from lmupi.tmu_format import (
++    CHUNK_INDEX_SIZE,
++    FOOTER_SIZE,
++    HEADER_SIZE,
++    TMU_MAGIC,
++    ChannelDef,
++    ChannelType,
++    ChunkIndex,
++    SessionMetadata,
++    decode_channel_table,
++    decode_chunk_index,
++    decode_footer,
++    decode_header,
++    encode_channel_table,
++    encode_chunk_index,
++    encode_footer,
++    encode_header,
++)
++from lmupi.tmu_compression import StreamingCompressor, decompress_chunk
++from lmupi.tmu_serializer import TelemetrySerializer, default_channels
++
++
++# ── Helpers ───────────────────────────────────────────────
++
++def _make_vect3(x=0.0, y=0.0, z=0.0):
++    return SimpleNamespace(x=x, y=y, z=z)
++
++
++def _make_wheel(temp_center=300.0, pressure=200.0, brake_temp=400.0):
++    return SimpleNamespace(
++        mTemperature=[0.0, temp_center, 0.0],
++        mPressure=pressure,
++        mBrakeTemp=brake_temp,
++    )
++
++
++def _make_vt(**overrides):
++    """Create a mock LMUVehicleTelemetry namespace."""
++    defaults = dict(
++        mEngineRPM=5000.0,
++        mUnfilteredThrottle=0.75,
++        mUnfilteredBrake=0.1,
++        mUnfilteredSteering=0.05,
++        mPhysicalSteeringWheelRange=900.0,
++        mGear=3,
++        mUnfilteredClutch=0.0,
++        mEngineWaterTemp=90.0,
++        mEngineOilTemp=100.0,
++        mEngineTorque=350.0,
++        mEngineMaxRPM=8000.0,
++        mFuel=40.0,
++        mFuelCapacity=100.0,
++        mLocalVel=_make_vect3(10.0, 0.0, 20.0),
++        mLocalAccel=_make_vect3(1.0, 0.0, 2.0),
++        mPos=_make_vect3(100.0, 5.0, 200.0),
++        mLocalRot=_make_vect3(),
++        mLocalRotAccel=_make_vect3(),
++        mFrontRideHeight=0.05,
++        mRearRideHeight=0.06,
++        mDrag=1.2,
++        mFrontDownforce=500.0,
++        mRearDownforce=600.0,
++        mCurrentSector=1,
++        mElapsedTime=120.5,
++        mDeltaTime=0.016,
++        mWheels=[
++            _make_wheel(350.0, 180.0, 400.0),
++            _make_wheel(355.0, 182.0, 410.0),
++            _make_wheel(340.0, 175.0, 380.0),
++            _make_wheel(345.0, 177.0, 390.0),
++        ],
++    )
++    defaults.update(overrides)
++    return SimpleNamespace(**defaults)
++
++
++def _make_vs(**overrides):
++    """Create a mock LMUVehicleScoring namespace."""
++    defaults = dict(
++        mTotalLaps=5,
++        mLapDist=1500.0,
++        mInPits=False,
++        mLastLapTime=85.5,
++        mBestLapTime=84.2,
++    )
++    defaults.update(overrides)
++    return SimpleNamespace(**defaults)
++
++
++# ── TMU Format Tests ─────────────────────────────────────
++
++class TestTmuFormat(unittest.TestCase):
++    def test_header_round_trip(self):
++        header = encode_header(
++            num_channels=10, sample_rate=60,
++            metadata_offset=HEADER_SIZE, metadata_size=50,
++            channel_table_offset=HEADER_SIZE + 50,
++            channel_table_size=200,
++            data_start_offset=HEADER_SIZE + 250,
++        )
++        self.assertEqual(len(header), HEADER_SIZE)
++        decoded = decode_header(header)
++        self.assertEqual(decoded["num_channels"], 10)
++        self.assertEqual(decoded["sample_rate"], 60)
++        self.assertEqual(decoded["metadata_offset"], HEADER_SIZE)
++
++    def test_header_invalid_magic(self):
++        bad = b"BAD\x00" + b"\x00" * (HEADER_SIZE - 4)
++        with self.assertRaises(ValueError):
++            decode_header(bad)
++
++    def test_footer_round_trip(self):
++        footer = encode_footer(total_frames=500, index_table_offset=10000, index_entry_count=8)
++        self.assertEqual(len(footer), FOOTER_SIZE)
++        decoded = decode_footer(footer)
++        self.assertEqual(decoded["total_frames"], 500)
++        self.assertEqual(decoded["index_table_offset"], 10000)
++        self.assertEqual(decoded["index_entry_count"], 8)
++
++    def test_channel_table_round_trip(self):
++        channels = [
++            ChannelDef("Speed", ChannelType.FLOAT64, "km/h", byte_offset=8),
++            ChannelDef("Gear", ChannelType.INT32, "", byte_offset=16),
++            ChannelDef("InPits", ChannelType.BOOL, "", byte_offset=20),
++        ]
++        encoded = encode_channel_table(channels)
++        decoded = decode_channel_table(encoded, 3)
++        self.assertEqual(len(decoded), 3)
++        self.assertEqual(decoded[0].name, "Speed")
++        self.assertEqual(decoded[0].type_code, ChannelType.FLOAT64)
++        self.assertEqual(decoded[0].unit, "km/h")
++        self.assertEqual(decoded[1].name, "Gear")
++        self.assertEqual(decoded[2].name, "InPits")
++
++    def test_chunk_index_round_trip(self):
++        entry = ChunkIndex(file_offset=1024, compressed_size=256,
++                           frame_count=64, first_frame_idx=128)
++        encoded = encode_chunk_index(entry)
++        self.assertEqual(len(encoded), CHUNK_INDEX_SIZE)
++        decoded = decode_chunk_index(encoded)
++        self.assertEqual(decoded.file_offset, 1024)
++        self.assertEqual(decoded.compressed_size, 256)
++        self.assertEqual(decoded.frame_count, 64)
++        self.assertEqual(decoded.first_frame_idx, 128)
++
++    def test_session_metadata_round_trip(self):
++        meta = SessionMetadata(
++            track="Spa-Francorchamps",
++            car="Porsche 911 GT3 R",
++            driver="Test Driver",
++            date="2025-01-01T00:00:00Z",
++            sample_rate=60,
++            extra={"weather": "dry"},
++        )
++        json_bytes = meta.to_json_bytes()
++        restored = SessionMetadata.from_json_bytes(json_bytes)
++        self.assertEqual(restored.track, "Spa-Francorchamps")
++        self.assertEqual(restored.car, "Porsche 911 GT3 R")
++        self.assertEqual(restored.driver, "Test Driver")
++        self.assertEqual(restored.sample_rate, 60)
++        self.assertEqual(restored.extra.get("weather"), "dry")
++
++
++# ── Compression Tests ─────────────────────────────────────
++
++class TestStreamingCompressor(unittest.TestCase):
++    def test_chunk_produced_at_threshold(self):
++        comp = StreamingCompressor(frames_per_chunk=4)
++        frame = b"\x42" * 100
++        results = []
++        for i in range(4):
++            chunk = comp.add_frame(frame)
++            results.append(chunk)
++        # Only the 4th add_frame should produce a chunk
++        self.assertIsNone(results[0])
++        self.assertIsNone(results[1])
++        self.assertIsNone(results[2])
++        self.assertIsNotNone(results[3])
++        self.assertEqual(comp.total_frames, 4)
++
++    def test_decompress_round_trip(self):
++        comp = StreamingCompressor(frames_per_chunk=2)
++        frame = b"\xAB" * 50
++        comp.add_frame(frame)
++        chunk = comp.add_frame(frame)
++        self.assertIsNotNone(chunk)
++        raw = decompress_chunk(chunk)
++        self.assertEqual(raw, frame * 2)
++
++    def test_flush_remaining(self):
++        comp = StreamingCompressor(frames_per_chunk=10)
++        frame = b"\x01" * 32
++        for _ in range(3):
++            comp.add_frame(frame)
++        self.assertEqual(comp.pending_frames, 3)
++        chunk = comp.flush()
++        self.assertIsNotNone(chunk)
++        self.assertEqual(comp.pending_frames, 0)
++        raw = decompress_chunk(chunk)
++        self.assertEqual(raw, frame * 3)
++
++    def test_flush_empty(self):
++        comp = StreamingCompressor(frames_per_chunk=10)
++        self.assertIsNone(comp.flush())
++
++    def test_chunk_indices_maintained(self):
++        comp = StreamingCompressor(frames_per_chunk=3)
++        frame = b"\xFF" * 20
++        for _ in range(9):
++            comp.add_frame(frame)
++        indices = comp.chunk_indices
++        self.assertEqual(len(indices), 3)
++        self.assertEqual(indices[0].first_frame_idx, 0)
++        self.assertEqual(indices[0].frame_count, 3)
++        self.assertEqual(indices[1].first_frame_idx, 3)
++        self.assertEqual(indices[2].first_frame_idx, 6)
++        self.assertEqual(comp.total_frames, 9)
++
++
++# ── Serializer Tests ──────────────────────────────────────
++
++class TestTelemetrySerializer(unittest.TestCase):
++    def test_default_channels(self):
++        channels = default_channels()
++        self.assertGreater(len(channels), 10)
++        names = [ch.name for ch in channels]
++        self.assertIn("Speed", names)
++        self.assertIn("RPM", names)
++        self.assertIn("Gear", names)
++        self.assertIn("Fuel", names)
++
++    def test_frame_size(self):
++        serializer = TelemetrySerializer()
++        # frame = timestamp (8) + sum of all channel sizes
++        expected = 8  # timestamp
++        for ch in serializer.channels:
++            from lmupi.tmu_format import CHANNEL_TYPE_SIZE
++            expected += CHANNEL_TYPE_SIZE[ch.type_code]
++        self.assertEqual(serializer.frame_size, expected)
++
++    def test_serialize_frame(self):
++        serializer = TelemetrySerializer()
++        vt = _make_vt()
++        vs = _make_vs()
++        frame = serializer.serialize_frame(1.0, vt, vs)
++        self.assertEqual(len(frame), serializer.frame_size)
++
++        # Unpack and check timestamp
++        timestamp = struct.unpack_from("<d", frame, 0)[0]
++        self.assertAlmostEqual(timestamp, 1.0)
++
++    def test_custom_channels(self):
++        channels = [
++            ChannelDef("RPM", ChannelType.FLOAT64, "rpm"),
++            ChannelDef("Gear", ChannelType.INT32, ""),
++        ]
++        serializer = TelemetrySerializer(channels)
++        self.assertEqual(len(serializer.channels), 2)
++        # frame = timestamp(8) + double(8) + int32(4) = 20
++        self.assertEqual(serializer.frame_size, 20)
++
++        vt = _make_vt()
++        vs = _make_vs()
++        frame = serializer.serialize_frame(2.5, vt, vs)
++        self.assertEqual(len(frame), 20)
++
++        # Unpack: timestamp, rpm, gear
++        ts, rpm, gear = struct.unpack("<ddi", frame)
++        self.assertAlmostEqual(ts, 2.5)
++        self.assertAlmostEqual(rpm, 5000.0)
++        self.assertEqual(gear, 3)
++
++    def test_speed_computation(self):
++        """Speed should be sqrt(vx² + vy² + vz²) * 3.6."""
++        import math
++        channels = [ChannelDef("Speed", ChannelType.FLOAT64, "km/h")]
++        serializer = TelemetrySerializer(channels)
++        vt = _make_vt(mLocalVel=_make_vect3(10.0, 0.0, 0.0))
++        vs = _make_vs()
++        frame = serializer.serialize_frame(0.0, vt, vs)
++        ts, speed = struct.unpack("<dd", frame)
++        expected = math.sqrt(10.0**2) * 3.6
++        self.assertAlmostEqual(speed, expected, places=5)
++
++    def test_kelvin_to_celsius_conversion(self):
++        """Tyre temps should be converted from Kelvin to Celsius."""
++        channels = [ChannelDef("TyreTempFL", ChannelType.FLOAT64, "°C")]
++        serializer = TelemetrySerializer(channels)
++        vt = _make_vt()
++        vs = _make_vs()
++        frame = serializer.serialize_frame(0.0, vt, vs)
++        ts, temp = struct.unpack("<dd", frame)
++        # FL temp center is 350K → 350 - 273.15 = 76.85°C
++        self.assertAlmostEqual(temp, 350.0 - 273.15, places=5)
++
++
++# ── RingBuffer Tests (import without Qt) ──────────────────
++
++class TestRingBufferLogic(unittest.TestCase):
++    """Test ring buffer basic logic.  Since we can't import QMutex
++    without PySide6 in CI, we test the deque-based logic directly."""
++
++    def test_deque_ring_behavior(self):
++        import collections
++        buf = collections.deque(maxlen=4)
++        for i in range(6):
++            was_full = len(buf) == buf.maxlen
++            buf.append(i)
++        # maxlen=4 so oldest items dropped
++        self.assertEqual(list(buf), [2, 3, 4, 5])
++
++
++# ── Integration: Serializer → Compressor ──────────────────
++
++class TestSerializerCompressorIntegration(unittest.TestCase):
++    def test_end_to_end_frame_pipeline(self):
++        """Serialize frames, compress them, then decompress and verify."""
++        serializer = TelemetrySerializer()
++        compressor = StreamingCompressor(frames_per_chunk=4)
++
++        vt = _make_vt()
++        vs = _make_vs()
++
++        chunks = []
++        for i in range(8):
++            frame = serializer.serialize_frame(float(i), vt, vs)
++            chunk = compressor.add_frame(frame)
++            if chunk is not None:
++                chunks.append(chunk)
++
++        self.assertEqual(len(chunks), 2)  # 8 frames / 4 per chunk
++
++        # Decompress first chunk and verify frame size
++        raw = decompress_chunk(chunks[0])
++        self.assertEqual(len(raw), serializer.frame_size * 4)
++
++        # Verify first timestamp
++        ts = struct.unpack_from("<d", raw, 0)[0]
++        self.assertAlmostEqual(ts, 0.0)
++
++    def test_file_write_simulation(self):
++        """Simulate writing a complete .tmu file (header, data, index, footer)."""
++        serializer = TelemetrySerializer()
++        compressor = StreamingCompressor(frames_per_chunk=4)
++        channels = serializer.channels
++
++        meta = SessionMetadata(track="Test", car="TestCar", sample_rate=60)
++        meta_bytes = meta.to_json_bytes()
++        ch_table_bytes = encode_channel_table(channels)
++
++        metadata_offset = HEADER_SIZE
++        metadata_size = len(meta_bytes)
++        channel_table_offset = metadata_offset + metadata_size
++        channel_table_size = len(ch_table_bytes)
++        data_start_offset = channel_table_offset + channel_table_size
++
++        header = encode_header(
++            num_channels=len(channels),
++            sample_rate=60,
++            metadata_offset=metadata_offset,
++            metadata_size=metadata_size,
++            channel_table_offset=channel_table_offset,
++            channel_table_size=channel_table_size,
++            data_start_offset=data_start_offset,
++        )
++
++        with tempfile.NamedTemporaryFile(suffix=".tmu", delete=False) as f:
++            path = f.name
++            f.write(header)
++            f.write(meta_bytes)
++            f.write(ch_table_bytes)
++
++            bytes_written = data_start_offset
++            vt = _make_vt()
++            vs = _make_vs()
++
++            for i in range(10):
++                frame = serializer.serialize_frame(float(i), vt, vs)
++                chunk = compressor.add_frame(frame)
++                if chunk is not None:
++                    idx_entry = compressor.chunk_indices[-1]
++                    idx_entry.file_offset = bytes_written
++                    f.write(chunk)
++                    bytes_written += len(chunk)
++
++            last = compressor.flush()
++            if last is not None:
++                idx_entry = compressor.chunk_indices[-1]
++                idx_entry.file_offset = bytes_written
++                f.write(last)
++                bytes_written += len(last)
++
++            index_offset = bytes_written
++            for entry in compressor.chunk_indices:
++                f.write(encode_chunk_index(entry))
++
++            footer = encode_footer(
++                total_frames=compressor.total_frames,
++                index_table_offset=index_offset,
++                index_entry_count=len(compressor.chunk_indices),
++            )
++            f.write(footer)
++
++        # Read back and verify
++        with open(path, "rb") as f:
++            raw_header = f.read(HEADER_SIZE)
++            hdr = decode_header(raw_header)
++            self.assertEqual(hdr["num_channels"], len(channels))
++            self.assertEqual(hdr["sample_rate"], 60)
++
++            # Read metadata
++            f.seek(hdr["metadata_offset"])
++            raw_meta = f.read(hdr["metadata_size"])
++            restored_meta = SessionMetadata.from_json_bytes(raw_meta)
++            self.assertEqual(restored_meta.track, "Test")
++
++            # Read footer
++            f.seek(0, 2)
++            file_size = f.tell()
++            f.seek(file_size - FOOTER_SIZE)
++            raw_footer = f.read(FOOTER_SIZE)
++            ftr = decode_footer(raw_footer)
++            self.assertEqual(ftr["total_frames"], 10)
++            self.assertGreater(ftr["index_entry_count"], 0)
++
++        Path(path).unlink()
++
++
++if __name__ == "__main__":
++    unittest.main()
