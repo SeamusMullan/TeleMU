@@ -39,7 +39,6 @@ from lmupi.streaming.protocol import (
 
 logger = logging.getLogger(__name__)
 
-_HEARTBEAT_INTERVAL = 5.0   # seconds between heartbeats
 _CLIENT_TIMEOUT = 15.0      # drop client after this many seconds without heartbeat
 
 
@@ -278,7 +277,6 @@ class TelemetryStreamingServer(QThread):
         except OSError:
             return
 
-        conn.setblocking(False)
         conn.settimeout(2.0)
 
         try:
@@ -306,6 +304,7 @@ class TelemetryStreamingServer(QThread):
             udp_port = payload.get("udp_port", addr[1])
             udp_addr = (addr[0], udp_port)
 
+            # Switch to non-blocking for ongoing control messages
             conn.setblocking(False)
 
             client = _ClientInfo(

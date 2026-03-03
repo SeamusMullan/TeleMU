@@ -45,6 +45,11 @@ class TestServerLifecycle(unittest.TestCase):
         time.sleep(0.3)
 
         try:
+            # Set up a UDP socket for receiving telemetry
+            udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            udp_sock.bind(("127.0.0.1", 0))
+            udp_port = udp_sock.getsockname()[1]
+
             # Connect a TCP client and perform handshake
             client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client.settimeout(2.0)
@@ -53,7 +58,7 @@ class TestServerLifecycle(unittest.TestCase):
             # Send handshake request
             req = pack_control_message(MsgType.HANDSHAKE_REQ, {
                 "client_name": "test-client",
-                "udp_port": client.getsockname()[1],
+                "udp_port": udp_port,
             })
             client.sendall(req)
 
@@ -72,6 +77,7 @@ class TestServerLifecycle(unittest.TestCase):
             self.assertEqual(server.client_count, 1)
 
             client.close()
+            udp_sock.close()
         finally:
             server.stop_server()
 
@@ -81,6 +87,8 @@ class TestServerLifecycle(unittest.TestCase):
         server.start_server()
         time.sleep(0.3)
 
+        udp_sock = None
+        client = None
         try:
             # Set up UDP receive socket
             udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -117,10 +125,11 @@ class TestServerLifecycle(unittest.TestCase):
             self.assertEqual(seq, 1)
             self.assertAlmostEqual(channels["Speed"], 250.0, places=3)
             self.assertAlmostEqual(channels["RPM"], 6800.0, places=3)
-
-            client.close()
-            udp_sock.close()
         finally:
+            if client is not None:
+                client.close()
+            if udp_sock is not None:
+                udp_sock.close()
             server.stop_server()
 
     def test_port_property(self) -> None:
