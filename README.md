@@ -42,7 +42,7 @@ TeleMU/
 
 ```bash
 # Clone
-git clone https://github.com/SEAMU-OFFICIAL/TeleMU.git
+git clone https://github.com/SeamusMullan/TeleMU.git
 cd TeleMU/LMUPI
 
 # Install dependencies (requires uv)
