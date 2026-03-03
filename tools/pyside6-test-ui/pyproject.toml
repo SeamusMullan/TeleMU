@@ -1,0 +1,11 @@
+[project]
+name = "pyside6-test-ui"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6>=6.8",
+    "httpx>=0.28",
+]
+
+[project.scripts]
+telemu-test-ui = "main:main"
