@@ -53,7 +53,11 @@ TeleMU/
 ### Backend
 
 ```bash
-cd backend
+# Clone
+git clone https://github.com/SeamusMullan/TeleMU.git
+cd TeleMU/LMUPI
+
+# Install dependencies (requires uv)
 uv sync
 uv run uvicorn telemu.main:app --reload --port 8000
 ```
