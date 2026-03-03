@@ -210,13 +210,21 @@ def decode_channel_table(data: bytes, num_channels: int) -> list[ChannelDef]:
     channels: list[ChannelDef] = []
     offset = 0
     for _ in range(num_channels):
-        name_len = data[offset]; offset += 1
-        name = data[offset:offset + name_len].decode("utf-8"); offset += name_len
-        type_code = ChannelType(data[offset]); offset += 1
-        unit_len = data[offset]; offset += 1
-        unit = data[offset:offset + unit_len].decode("utf-8"); offset += unit_len
-        byte_offset = struct.unpack_from("<I", data, offset)[0]; offset += 4
-        channels.append(ChannelDef(name=name, type_code=type_code, unit=unit, byte_offset=byte_offset))
+        name_len = data[offset]
+        offset += 1
+        name = data[offset:offset + name_len].decode("utf-8")
+        offset += name_len
+        type_code = ChannelType(data[offset])
+        offset += 1
+        unit_len = data[offset]
+        offset += 1
+        unit = data[offset:offset + unit_len].decode("utf-8")
+        offset += unit_len
+        byte_offset = struct.unpack_from("<I", data, offset)[0]
+        offset += 4
+        channels.append(ChannelDef(
+            name=name, type_code=type_code, unit=unit, byte_offset=byte_offset,
+        ))
     return channels
 
 

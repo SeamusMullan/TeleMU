@@ -6,6 +6,7 @@ from __future__ import annotations
 import struct
 import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 from lmupi.tmu_format import (
@@ -433,8 +434,7 @@ class TestSerializerCompressorIntegration(unittest.TestCase):
             self.assertEqual(ftr["total_frames"], 10)
             self.assertGreater(ftr["index_entry_count"], 0)
 
-        import os
-        os.unlink(path)
+        Path(path).unlink()
 
 
 if __name__ == "__main__":

@@ -87,7 +87,7 @@ def default_channels() -> list[ChannelDef]:
         ChannelDef("Drag", ChannelType.FLOAT64, ""),
         ChannelDef("FrontDownforce", ChannelType.FLOAT64, ""),
         ChannelDef("RearDownforce", ChannelType.FLOAT64, ""),
-        # Scoring
+        # Scoring (LapNumber = mTotalLaps + 1, i.e. current 1-indexed lap)
         ChannelDef("LapNumber", ChannelType.INT32, ""),
         ChannelDef("LapDist", ChannelType.FLOAT64, "m"),
         ChannelDef("CurrentSector", ChannelType.INT32, ""),

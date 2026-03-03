@@ -188,7 +188,7 @@ class TelemetryRecorder(QThread):
 
     # ── Thread entry point ────────────────────────────────
 
-    def run(self) -> None:  # noqa: C901  (complexity acceptable for main loop)
+    def run(self) -> None:
         """Thread main loop — poll shared memory, serialize, compress, write."""
         output_path: str | None
         with QMutexLocker(self._state_mutex):
@@ -199,46 +199,75 @@ class TelemetryRecorder(QThread):
             return
 
         # ── Open shared memory ────────────────────────────
-        mmap: MMapControl | None = None
+        mmap = self._open_shared_memory()
+        if mmap is None:
+            return
+
+        # ── Open output file and write header ─────────────
+        fh = self._open_output_file(output_path, mmap)
+        if fh is None:
+            mmap.close()
+            return
+
+        self.recording_started.emit()
+        logger.info("TelemetryRecorder: started recording to %s", output_path)
+
+        # ── Main recording loop ───────────────────────────
+        compressor = StreamingCompressor(frames_per_chunk=_FRAMES_PER_CHUNK)
+        bytes_written = self._data_start_offset
+
+        try:
+            bytes_written = self._recording_loop(
+                mmap, fh, compressor, bytes_written,
+            )
+        except Exception as exc:
+            self.error.emit(f"Recording error: {exc}")
+
+        # ── Finalize file ─────────────────────────────────
+        self._finalize_file(fh, mmap, compressor, bytes_written, output_path)
+
+    # ── Recording helpers ─────────────────────────────────
+
+    def _open_shared_memory(self) -> MMapControl | None:
+        """Open shared memory; return the control object or None on failure."""
         try:
             mmap = MMapControl(
                 LMUConstants.LMU_SHARED_MEMORY_FILE,
                 LMUObjectOut,
             )
             mmap.create(access_mode=0)
+            return mmap
         except Exception as exc:
             self.error.emit(f"Could not open shared memory: {exc}")
             with QMutexLocker(self._state_mutex):
                 self._running = False
-            return
+            return None
 
-        # ── Open output file and write header ─────────────
+    def _open_output_file(self, output_path: str, mmap: MMapControl):
+        """Open the output file and write header/metadata/channel table.
+
+        Returns the file handle, or ``None`` on failure.
+        """
         try:
             fh = open(output_path, "wb")
         except Exception as exc:
             self.error.emit(f"Could not open output file: {exc}")
-            mmap.close()
             with QMutexLocker(self._state_mutex):
                 self._running = False
-            return
+            return None
 
         serializer = self._serializer
-        compressor = StreamingCompressor(frames_per_chunk=_FRAMES_PER_CHUNK)
-
-        # Build session metadata from shared memory
         metadata = self._build_metadata(mmap)
         meta_bytes = metadata.to_json_bytes()
-
         channels = serializer.channels
         ch_table_bytes = encode_channel_table(channels)
 
-        # Compute offsets
         from lmupi.tmu_format import HEADER_SIZE
         metadata_offset = HEADER_SIZE
         metadata_size = len(meta_bytes)
         channel_table_offset = metadata_offset + metadata_size
         channel_table_size = len(ch_table_bytes)
-        data_start_offset = channel_table_offset + channel_table_size
+        self._data_start_offset = channel_table_offset + channel_table_size
 
         header = encode_header(
             num_channels=len(channels),
@@ -247,7 +276,7 @@ class TelemetryRecorder(QThread):
             metadata_size=metadata_size,
             channel_table_offset=channel_table_offset,
             channel_table_size=channel_table_size,
-            data_start_offset=data_start_offset,
+            data_start_offset=self._data_start_offset,
         )
 
         try:
@@ -257,98 +286,112 @@ class TelemetryRecorder(QThread):
         except Exception as exc:
             self.error.emit(f"Error writing file header: {exc}")
             fh.close()
-            mmap.close()
             with QMutexLocker(self._state_mutex):
                 self._running = False
-            return
+            return None
 
-        self.recording_started.emit()
-        logger.info("TelemetryRecorder: started recording to %s", output_path)
+        return fh
 
-        # ── Main recording loop ───────────────────────────
-        frame_count = 0
-        bytes_written = data_start_offset
+    def _recording_loop(
+        self,
+        mmap: MMapControl,
+        fh,
+        compressor: StreamingCompressor,
+        bytes_written: int,
+    ) -> int:
+        """Run the main poll → serialize → compress → write loop.
+
+        Returns the updated ``bytes_written`` value.
+        """
+        serializer = self._serializer
         start_time = time.monotonic()
         stats_counter = 0
 
+        while True:
+            with QMutexLocker(self._state_mutex):
+                if not self._running:
+                    break
+                paused = self._paused
+
+            if not paused:
+                self._poll_and_enqueue(mmap, serializer)
+                bytes_written = self._drain_and_write(
+                    fh, compressor, bytes_written,
+                )
+
+                stats_counter += 1
+                if stats_counter >= _STATS_INTERVAL_FRAMES:
+                    stats_counter = 0
+                    elapsed = time.monotonic() - start_time
+                    self.stats_updated.emit({
+                        "frames": compressor.total_frames,
+                        "bytes_written": bytes_written,
+                        "elapsed_seconds": elapsed,
+                        "drops": self._ring.drop_count,
+                        "ring_usage": len(self._ring),
+                    })
+
+            self.msleep(self._poll_ms)
+
+        return bytes_written
+
+    def _poll_and_enqueue(
+        self, mmap: MMapControl, serializer: TelemetrySerializer,
+    ) -> None:
+        """Read one sample from shared memory and push to the ring buffer."""
         try:
-            while True:
-                with QMutexLocker(self._state_mutex):
-                    if not self._running:
-                        break
-                    paused = self._paused
+            mmap.update()
+        except Exception:
+            return  # skip this frame if update fails
 
-                if not paused:
-                    # Poll shared memory
-                    try:
-                        mmap.update()
-                    except Exception:
-                        pass  # skip this frame if update fails
+        data = mmap.data
+        if data is None:
+            return
+        if not data.generic.gameVersion:
+            return
 
-                    data = mmap.data
-                    if data is not None:
-                        version = data.generic.gameVersion
-                        if version:
-                            tele = data.telemetry
-                            if tele.playerHasVehicle:
-                                idx = tele.playerVehicleIdx
-                                if 0 <= idx < LMUConstants.MAX_MAPPED_VEHICLES:
-                                    vt = tele.telemInfo[idx]
-                                    vs = data.scoring.vehScoringInfo[idx]
+        tele = data.telemetry
+        if not tele.playerHasVehicle:
+            return
 
-                                    timestamp = vt.mElapsedTime
-                                    frame_bytes = serializer.serialize_frame(
-                                        timestamp, vt, vs,
-                                    )
-                                    self._ring.put(frame_bytes)
+        idx = tele.playerVehicleIdx
+        if not (0 <= idx < LMUConstants.MAX_MAPPED_VEHICLES):
+            return
 
-                    # Drain ring buffer and write compressed chunks
-                    frames = self._ring.drain()
-                    for frame in frames:
-                        chunk = compressor.add_frame(frame)
-                        if chunk is not None:
-                            # Update file offset in the latest chunk index
-                            idx_entry = compressor.chunk_indices[-1]
-                            idx_entry.file_offset = bytes_written
-                            fh.write(chunk)
-                            bytes_written += len(chunk)
-                            frame_count = compressor.total_frames
+        vt = tele.telemInfo[idx]
+        vs = data.scoring.vehScoringInfo[idx]
+        frame_bytes = serializer.serialize_frame(vt.mElapsedTime, vt, vs)
+        self._ring.put(frame_bytes)
 
-                    # Emit stats periodically
-                    stats_counter += 1
-                    if stats_counter >= _STATS_INTERVAL_FRAMES:
-                        stats_counter = 0
-                        elapsed = time.monotonic() - start_time
-                        self.stats_updated.emit({
-                            "frames": frame_count,
-                            "bytes_written": bytes_written,
-                            "elapsed_seconds": elapsed,
-                            "drops": self._ring.drop_count,
-                            "ring_usage": len(self._ring),
-                        })
+    def _drain_and_write(
+        self, fh, compressor: StreamingCompressor, bytes_written: int,
+    ) -> int:
+        """Drain the ring buffer and write compressed chunks to *fh*."""
+        for frame in self._ring.drain():
+            chunk = compressor.add_frame(frame)
+            if chunk is not None:
+                compressor.chunk_indices[-1].file_offset = bytes_written
+                fh.write(chunk)
+                bytes_written += len(chunk)
+        return bytes_written
 
-                self.msleep(self._poll_ms)
-
-        except Exception as exc:
-            self.error.emit(f"Recording error: {exc}")
-
-        # ── Finalize file ─────────────────────────────────
+    def _finalize_file(
+        self,
+        fh,
+        mmap: MMapControl,
+        compressor: StreamingCompressor,
+        bytes_written: int,
+        output_path: str,
+    ) -> None:
+        """Flush remaining data, write index table and footer, close files."""
         try:
             # Drain remaining frames from ring buffer
-            remaining = self._ring.drain()
-            for frame in remaining:
-                chunk = compressor.add_frame(frame)
-                if chunk is not None:
-                    idx_entry = compressor.chunk_indices[-1]
-                    idx_entry.file_offset = bytes_written
-                    fh.write(chunk)
-                    bytes_written += len(chunk)
+            bytes_written = self._drain_and_write(fh, compressor, bytes_written)
 
             # Flush any remaining frames in the compressor
             last_chunk = compressor.flush()
             if last_chunk is not None:
-                idx_entry = compressor.chunk_indices[-1]
-                idx_entry.file_offset = bytes_written
+                compressor.chunk_indices[-1].file_offset = bytes_written
                 fh.write(last_chunk)
                 bytes_written += len(last_chunk)
 
