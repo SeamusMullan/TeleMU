@@ -8,10 +8,26 @@ __pycache__/
 dist/
 build/
 *.spec
+.pytest_cache/
+.coverage
+htmlcov/
+.eggs/
 
 # Virtual environments
 .venv/
 venv/
+
+# uv
+uv.lock
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# Electron
+frontend/out/
 
 # IDE
 .idea/
@@ -23,9 +39,10 @@ venv/
 .DS_Store
 Thumbs.db
 
-# DuckDB
+# DuckDB & telemetry
 *.duckdb
 *.duckdb.wal
+*.tmu
 
 # MkDocs build output
 docs/site/
@@ -37,3 +54,7 @@ docs/site/
 *.tar.gz
 *.tar.zst
 *.whl
+
+# Environment
+.env
+.env.local

@@ -1,0 +1,35 @@
+[project]
+name = "telemu"
+version = "0.1.0"
+description = "TeleMU v2 — Telemetry analysis backend for Le Mans Ultimate"
+readme = "../README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "websockets>=14.0",
+    "duckdb>=1.4.4",
+    "numpy>=2.4",
+    "scipy>=1.17",
+    "zstandard>=0.23",
+    "pydantic-settings>=2.7",
+]
+
+[project.scripts]
+telemu = "telemu.main:cli"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.25",
+    "pytest-cov>=6.0",
+    "httpx>=0.28",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100

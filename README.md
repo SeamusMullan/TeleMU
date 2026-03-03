@@ -2,54 +2,89 @@
 
 **Telemetry Analysis Platform for Le Mans Ultimate**
 
-TeleMU is a Python-based telemetry analysis platform for [Le Mans Ultimate](https://www.lemansvirtual.com/). It reads live telemetry from LMU's shared memory, records sessions to `.tmu` files, analyses post-session data via DuckDB, and (planned) streams telemetry to a remote race engineer over LAN.
+TeleMU is a telemetry analysis platform for [Le Mans Ultimate](https://www.lemansvirtual.com/). It reads live telemetry from LMU's shared memory, provides real-time dashboards, records sessions, analyses post-session data via DuckDB, and streams telemetry to a remote race engineer over LAN.
+
+> **v2 Rewrite** — The original PySide6 desktop app is archived on the `v1-archive` branch. v2 uses a Python/FastAPI backend + React/TypeScript/Electron frontend.
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| UI | PySide6 / Qt6 |
+| Backend | Python 3.13, FastAPI, uvicorn, WebSocket |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS |
+| Desktop | Electron |
 | Data | DuckDB (read-only `.duckdb` files) |
-| Analysis | NumPy, SciPy, Matplotlib |
+| Analysis | NumPy, SciPy |
+| Charting | ECharts |
 | Live Telemetry | ctypes shared memory (LMU `SharedMemoryInterface`) |
-| Recording | `.tmu` binary format (planned) |
-| Streaming | UDP/TCP over LAN (planned) |
+| State | Zustand |
 
 ## Project Structure
 
 ```
 TeleMU/
-├── LMUPI/              # Python application (uv project)
-│   ├── lmupi/
-│   │   ├── app.py              # MainWindow, entry point
-│   │   ├── splitter.py         # DuckDB gateway (all SQL here)
-│   │   ├── widgets.py          # ExplorerTab, SqlTab, FilterBar
-│   │   ├── analyzer.py         # SignalAnalyzer (6 plot types)
-│   │   ├── advanced.py         # AdvancedAnalysis (4 analysis types)
-│   │   ├── track_viewer.py     # GPS track map
-│   │   ├── dashboard.py        # Live telemetry dashboard
-│   │   ├── telemetry_reader.py # QThread polling shared memory
-│   │   ├── theme.py            # Dark theme, plot colours
-│   │   └── sharedmem/          # LMU shared memory layer
-│   │       ├── lmu_data.py     # ctypes struct definitions
-│   │       ├── lmu_mmap.py     # Platform mmap abstraction
-│   │       └── lmu_type.py     # Type annotations
-│   └── pyproject.toml
-└── docs/               # MkDocs Material documentation
+├── backend/                # Python FastAPI backend (uv project)
+│   ├── telemu/
+│   │   ├── main.py         # FastAPI app, lifespan, CORS
+│   │   ├── config.py       # Pydantic Settings
+│   │   ├── reader.py       # Async telemetry reader (~60Hz)
+│   │   ├── models.py       # Pydantic models (API + WebSocket)
+│   │   ├── sharedmem/      # LMU shared memory (from v1)
+│   │   ├── ws/             # WebSocket manager + protocol
+│   │   ├── api/            # REST endpoints
+│   │   ├── db/             # DuckDB gateway
+│   │   ├── recording/      # .tmu recording (planned)
+│   │   ├── streaming/      # LAN streaming (planned)
+│   │   └── engineer/       # Race engineer tools (planned)
+│   └── tests/
+├── frontend/               # React + TypeScript + Electron
+│   ├── src/
+│   │   ├── api/            # REST + WebSocket clients
+│   │   ├── stores/         # Zustand state management
+│   │   ├── pages/          # Dashboard, Explorer, Analyzer, Settings
+│   │   ├── components/     # Gauges, sparklines, charts
+│   │   └── hooks/          # useTelemetry, useSession
+│   └── electron/           # Electron main process
+└── docs/                   # MkDocs documentation
 ```
 
 ## Getting Started
 
+### Backend
+
 ```bash
-# Clone
-git clone https://github.com/SEAMU-OFFICIAL/TeleMU.git
-cd TeleMU/LMUPI
-
-# Install dependencies (requires uv)
+cd backend
 uv sync
+uv run uvicorn telemu.main:app --reload --port 8000
+```
 
-# Run the app
-uv run lmupi
+For demo mode (simulated telemetry without LMU running):
+```bash
+TELEMU_DEMO_MODE=true uv run uvicorn telemu.main:app --reload --port 8000
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173). The Vite dev server proxies `/api` and `/ws` to the backend at `:8000`.
+
+### Electron
+
+```bash
+cd frontend
+npm run electron:dev
+```
+
+### Tests
+
+```bash
+cd backend && uv run pytest
+cd frontend && npm run test
 ```
 
 ## Documentation
@@ -61,18 +96,12 @@ cd docs
 uv run mkdocs serve
 ```
 
-Then open [http://localhost:8000](http://localhost:8000).
-
 Key sections:
-
-- [Architecture Overview](docs/docs/architecture/overview.md) — C4 diagrams, system design
-- [Data Pipeline](docs/docs/architecture/data-pipeline.md) — data flow through all subsystems
-- [Shared Memory](docs/docs/shared-memory/overview.md) — LMU shared memory interface
-- [Recording](docs/docs/recording/overview.md) — `.tmu` format and session recording
-- [Streaming](docs/docs/streaming/overview.md) — LAN telemetry streaming
-- [Race Engineer](docs/docs/race-engineer/overview.md) — strategy engine design
-- [LMUPI App](docs/docs/lmupi/overview.md) — module reference
-- [Agent Guide](docs/docs/contributing/agent-guide.md) — for LLM coding agents
+- [Architecture Overview](docs/docs/architecture/overview.md)
+- [Shared Memory](docs/docs/shared-memory/overview.md)
+- [Recording](docs/docs/recording/overview.md)
+- [Streaming](docs/docs/streaming/overview.md)
+- [Race Engineer](docs/docs/race-engineer/overview.md)
 
 ## License
 
