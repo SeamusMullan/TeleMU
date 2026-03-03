@@ -9,13 +9,18 @@ import numpy as np
 from PySide6.QtCore import Qt, QTimer, QRectF, QPointF, Signal
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QPainterPath, QConicalGradient, QBrush
 from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -24,6 +29,9 @@ from lmupi.theme import COLORS, PLOT_COLORS
 
 # Lazy import to avoid hard dependency on sharedmem (Windows-only mmap names)
 TelemetryReader = None  # populated on first connect attempt
+
+# Lazy import for streaming client (avoids import at module scope)
+StreamingClient = None  # populated on first stream connect attempt
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -448,6 +456,9 @@ class LiveDashboard(QWidget):
         # Shared memory reader (created on connect)
         self._reader = None
 
+        # Streaming client (created on stream connect)
+        self._stream_client = None
+
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
@@ -467,6 +478,11 @@ class LiveDashboard(QWidget):
         self._conn_status = QLabel("Disconnected")
         self._conn_status.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 10px;")
         top_row.addWidget(self._conn_status)
+
+        self._stream_btn = QPushButton("Connect Stream")
+        self._stream_btn.setFixedWidth(120)
+        self._stream_btn.clicked.connect(self._toggle_stream)
+        top_row.addWidget(self._stream_btn)
 
         self._live_btn = QPushButton("Start Demo")
         self._live_btn.setFixedWidth(100)
@@ -663,6 +679,110 @@ class LiveDashboard(QWidget):
         self._conn_status.setText(msg)
         self._conn_status.setStyleSheet(f"color: {COLORS['red']}; font-size: 10px;")
         self._connect_btn.setText("Connect LMU")
+
+    # -- Streaming client connection --
+
+    def _toggle_stream(self) -> None:
+        if self._stream_client is not None and self._stream_client.isRunning():
+            self._disconnect_stream()
+        else:
+            self._show_stream_dialog()
+
+    def _show_stream_dialog(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Connect to Telemetry Stream")
+        form = QFormLayout(dialog)
+
+        host_edit = QLineEdit("127.0.0.1")
+        host_edit.setPlaceholderText("Server IP address")
+        form.addRow("Host:", host_edit)
+
+        port_spin = QSpinBox()
+        port_spin.setRange(1, 65535)
+        port_spin.setValue(9100)
+        form.addRow("Port:", port_spin)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._connect_stream(host_edit.text().strip(), port_spin.value())
+
+    def _connect_stream(self, host: str, port: int) -> None:
+        global StreamingClient
+        if StreamingClient is None:
+            try:
+                from lmupi.streaming_client import StreamingClient as _SC
+                StreamingClient = _SC
+            except ImportError as exc:
+                self._conn_status.setText(f"Import error: {exc}")
+                self._conn_status.setStyleSheet(f"color: {COLORS['red']}; font-size: 10px;")
+                return
+
+        # Stop demo and LMU reader if running
+        if self._sim_timer.isActive():
+            self._sim_timer.stop()
+            self._live_btn.setText("Start Demo")
+        if self._reader is not None and self._reader.isRunning():
+            self._disconnect_lmu()
+
+        self._stream_client = StreamingClient(self, host=host, port=port)
+        self._stream_client.connected.connect(self._on_stream_connected)
+        self._stream_client.disconnected.connect(self._on_stream_disconnected)
+        self._stream_client.error.connect(self._on_stream_error)
+        self._stream_client.status_changed.connect(self._on_stream_status)
+        self._stream_client.channel_map_received.connect(self._on_stream_channels)
+
+        self._conn_status.setText(f"Connecting to {host}:{port}…")
+        self._conn_status.setStyleSheet(f"color: {COLORS['amber']}; font-size: 10px;")
+        self._stream_btn.setText("Disconnect")
+
+        self._stream_client.start_streaming()
+
+    def _disconnect_stream(self) -> None:
+        if self._stream_client is not None:
+            self._stream_client.stop_streaming()
+            self._stream_client = None
+        self._stream_btn.setText("Connect Stream")
+        self._conn_status.setText("Disconnected")
+        self._conn_status.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 10px;")
+
+    def _on_stream_connected(self) -> None:
+        self._conn_status.setText("Stream connected — receiving telemetry")
+        self._conn_status.setStyleSheet(f"color: {COLORS['green']}; font-size: 10px;")
+
+    def _on_stream_disconnected(self) -> None:
+        self._stream_btn.setText("Connect Stream")
+        self._conn_status.setText("Disconnected")
+        self._conn_status.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 10px;")
+
+    def _on_stream_error(self, msg: str) -> None:
+        self._conn_status.setText(msg)
+        self._conn_status.setStyleSheet(f"color: {COLORS['red']}; font-size: 10px;")
+
+    def _on_stream_status(self, msg: str) -> None:
+        self._conn_status.setText(msg)
+        self._conn_status.setStyleSheet(f"color: {COLORS['amber']}; font-size: 10px;")
+
+    def _on_stream_channels(self, specs: list) -> None:
+        """Register channels from the server's channel map."""
+        from lmupi.streaming_client import ChannelSpec
+        from lmupi.dashboard import TelemetryChannel
+        for spec in specs:
+            if spec.name not in self._channels:
+                ch = TelemetryChannel(
+                    name=spec.name,
+                    unit=spec.unit,
+                    min_val=spec.min_val,
+                    max_val=spec.max_val,
+                    warn_low=spec.warn_low,
+                    warn_high=spec.warn_high,
+                )
+                self.register_channel(ch, display=spec.display)
 
     # -- Simulated data (placeholder) --
 
