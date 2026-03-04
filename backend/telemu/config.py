@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     # WebSocket
     ws_max_fps: int = 60
 
+    # Lovense integration
+    lovense_domain: str | None = None
+    lovense_https_port: int = 30010
+    lovense_verify_tls: bool = False
+    lovense_timeout_sec: float = 5.0
+
     # CORS (for development; Electron doesn't need this)
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 

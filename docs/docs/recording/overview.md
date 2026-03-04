@@ -62,8 +62,8 @@ block-beta
     columns 1
     Header["Header (fixed size)\nmagic | version | created_at | track | vehicle | metadata_json"]
     Index["Frame Index\noffset[0] | offset[1] | ... | offset[N-1]"]
-    Frames["Compressed Frames (each with CRC32)\n[size|crc32|zstd(frame_0)] | [size|crc32|zstd(frame_1)] | ..."]
-    Footer["Footer\nframe_count | index_offset | sha256"]
+    Frames["Compressed Frames\nzstd(frame_0) | zstd(frame_1) | ... | zstd(frame_N-1)"]
+    Footer["Footer\nframe_count | index_offset | checksum"]
 ```
 
 ### Header Fields
@@ -81,15 +81,7 @@ block-beta
 
 ### Frame Format
 
-Each compressed chunk is prefixed with a CRC32 for fast per-chunk validation:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `compressed_size` | uint32 | Size of the zstd-compressed payload |
-| `crc32` | uint32 | CRC32 of the compressed payload |
-| `compressed_data` | bytes | zstd-compressed frame data |
-
-The uncompressed frame payload contains:
+Each frame is independently zstd-compressed:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -103,45 +95,7 @@ The uncompressed frame payload contains:
 |-------|------|-------------|
 | `frame_count` | uint64 | Total frames written |
 | `index_offset` | uint64 | Byte offset where frame index starts |
-| `sha256` | bytes(32) | SHA-256 digest of the entire file preceding this field |
-
-### Integrity Verification
-
-The `.tmu` format provides two layers of integrity checking:
-
-- **CRC32 per chunk**: Each compressed frame carries a CRC32 checksum for fast validation and granular corruption detection.
-- **SHA-256 file digest**: The footer stores a SHA-256 hash of the complete file (excluding the digest itself) to detect any tampering or corruption.
-
-#### Verification on Open
-
-`TMUReader` verifies the file by default on open. Pass `verify=False` to skip:
-
-```python
-from telemu.recording import TMUReader
-
-# Verify on open (default)
-reader = TMUReader("session.tmu")
-
-# Skip verification for faster opens
-reader = TMUReader("session.tmu", verify=False)
-```
-
-#### Repair Mode
-
-Corrupted files can be repaired by copying valid frames to a new file:
-
-```python
-from telemu.recording import repair_file
-
-recovered, skipped = repair_file("corrupt.tmu", "repaired.tmu")
-```
-
-#### CLI Verification
-
-```bash
-telemu-verify session.tmu
-telemu-verify --repair session.tmu --output repaired.tmu
-```
+| `checksum` | uint32 | CRC32 of header + index + frames |
 
 ### Design Rationale
 
@@ -149,6 +103,38 @@ telemu-verify --repair session.tmu --output repaired.tmu
 - **Frame index**: enables seeking to any point in the recording by timestamp
 - **zstd**: fast compression/decompression, good ratio for telemetry data
 - **Player-only**: records only the player's vehicle data (not all 104 vehicles) to keep file sizes small
+
+## Integrity Verification
+
+The `.tmu` format includes a CRC-32 checksum in the footer covering all bytes before the footer. This enables detection of corruption from disk errors, incomplete writes, or other data integrity issues.
+
+### Verification on Open
+
+```python
+from telemu.recording import verify_file
+
+result = verify_file("session.tmu")
+# result.ok, result.crc32_ok, result.header_ok, result.frame_count
+```
+
+### Repair Mode
+
+Corrupted files can be repaired by recovering valid frames:
+
+```python
+from telemu.recording import repair_file
+
+recovered, skipped = repair_file("corrupt.tmu", "repaired.tmu")
+```
+
+### CLI Verification
+
+```bash
+telemu-verify session.tmu
+telemu-verify --repair session.tmu --output repaired.tmu
+```
+
+See [File Format Spec](format-spec.md) for the complete binary format specification.
 
 ## Data Flow
 
