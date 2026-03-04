@@ -34,6 +34,7 @@ from __future__ import annotations
 import logging
 import select
 import socket
+import struct
 import threading
 import time
 from dataclasses import dataclass, field
@@ -51,6 +52,7 @@ from .protocol import (
     SessionType,
     _decode_ctrl_header,
     decode_hello,
+    decode_ping_pong,
     decode_subscribe,
     encode_disconnect,
     encode_discovery,
@@ -150,10 +152,11 @@ class TelemetryStreamer:
         self._discovery_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         self._discovery_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-        # TCP control listen socket
+        # TCP control listen socket — binds to all interfaces so engineers on
+        # any network interface can connect (LAN-only protocol, intentional).
         self._control_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._control_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._control_sock.bind(("", self._control_port))
+        self._control_sock.bind(("", self._control_port))  # noqa: S104
         self._control_sock.listen(_TCP_BACKLOG)
         self._control_sock.setblocking(False)
 
@@ -369,13 +372,11 @@ class TelemetryStreamer:
     ) -> None:
         """Handle one control message from a connected client."""
         if msg_type == MsgType.PING:
-            ts = payload[0:8]  # raw timestamp bytes
             try:
+                ts = decode_ping_pong(payload)
                 conn = state.sock
                 assert conn is not None
-                conn.sendall(encode_pong(
-                    __import__("struct").unpack_from("<d", payload)[0]
-                ))
+                conn.sendall(encode_pong(ts))
             except OSError:
                 pass
         elif msg_type == MsgType.PONG:
@@ -391,7 +392,7 @@ class TelemetryStreamer:
         while not self._stop_event.is_set():
             self._stop_event.wait(HEARTBEAT_INTERVAL)
             now = time.monotonic()
-            ts = __import__("time").time()
+            ts = time.time()
             ping_msg = encode_ping(ts)
             stale: list[str] = []
             with self._clients_lock:
@@ -427,7 +428,6 @@ class TelemetryStreamer:
         (no data yet), or ``None`` on EOF / parse error.
         """
         from .protocol import _CTRL_HDR_SIZE, _CTRL_HDR_FMT, STREAM_MAGIC
-        import struct as _struct
 
         try:
             header = _recvall(conn, _CTRL_HDR_SIZE)
@@ -435,7 +435,7 @@ class TelemetryStreamer:
                 return False
             if not header:
                 return None
-            magic, length, msg_type_raw = _struct.unpack_from(_CTRL_HDR_FMT, header)
+            magic, length, msg_type_raw = struct.unpack_from(_CTRL_HDR_FMT, header)
             if magic != STREAM_MAGIC:
                 return None
             payload = _recvall(conn, length) if length else b""

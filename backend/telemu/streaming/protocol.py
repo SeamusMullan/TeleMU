@@ -137,7 +137,7 @@ _DISCONNECT_FMT = "<B"
 _DISCONNECT_SIZE = struct.calcsize(_DISCONNECT_FMT)
 
 # Telemetry UDP frame header: magic (4) + session_id (4) + sequence (4) +
-# timestamp (8) + channel_count (2) + lz4_flag (1)
+# timestamp (8) + channel_count (2) + lz4_compressed (1) = 23 bytes total
 _TELEM_HDR_FMT = "<4sIIdH?"
 _TELEM_HDR_SIZE = struct.calcsize(_TELEM_HDR_FMT)
 

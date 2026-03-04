@@ -114,7 +114,7 @@ Offset  Size  Field
 0       4     magic: b"TMU\x02"
 4       4     session_id: uint32
 8       4     sequence: uint32 (monotonic, for drop detection)
-12      8     timestamp: float64 (mElapsedTime, seconds)
+12      8     timestamp: float64 (elapsed session time in seconds; LMU `mElapsedTime`)
 20      2     channel_count: uint16
 22      1     lz4_compressed: bool (1 = payload is LZ4-compressed)
 23      ...   channel_data (variable; see below)

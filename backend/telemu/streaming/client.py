@@ -145,7 +145,9 @@ class StreamClient:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            sock.bind(("", self._discovery_port))
+            # Bind to all interfaces: required to receive UDP broadcast packets
+            # on any available network interface (LAN-only protocol, intentional).
+            sock.bind(("", self._discovery_port))  # noqa: S104
             sock.settimeout(0.2)
 
             deadline = time.monotonic() + timeout
@@ -188,10 +190,12 @@ class StreamClient:
         """
         self._stop_event.clear()
 
-        # Open UDP telemetry receive socket first so we have a local port
+        # Open UDP telemetry receive socket first so we have a local port.
+        # Bind to all interfaces to receive unicast frames from any driver
+        # address (LAN-only protocol, intentional).
         self._telem_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._telem_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._telem_sock.bind(("", local_udp_port))
+        self._telem_sock.bind(("", local_udp_port))  # noqa: S104
         self._telem_sock.settimeout(_POLL_TIMEOUT)
         actual_udp_port = self._telem_sock.getsockname()[1]
 
