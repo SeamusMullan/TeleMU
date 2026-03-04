@@ -1,8 +1,9 @@
-"""Tests for the .tmu binary file format module."""
+"""Tests for the .tmu binary file format module and integrity verification."""
 
 import json
 import struct
 import zlib
+from pathlib import Path
 
 import pytest
 
@@ -19,13 +20,19 @@ from telemu.recording.tmu_format import (
     MAGIC,
     ChannelDef,
     ChannelType,
+    TMUCorruptionError,
     TMUFooter,
     TMUHeader,
+    VerifyResult,
     build_minimal_tmu,
     compute_channel_offsets,
     frame_payload_size,
     pack_frame,
+    repair_file,
+    repair_tmu,
     unpack_frame,
+    verify_file,
+    verify_tmu,
 )
 
 
@@ -218,3 +225,150 @@ def test_build_minimal_tmu_is_valid():
         ts, vals = unpack_frame(frame_data, channels)
         assert isinstance(ts, float)
         assert "speed" in vals
+
+
+# ── Integrity verification tests ─────────────────────────────────────────────
+
+
+@pytest.fixture
+def valid_tmu_data() -> bytes:
+    """Build a valid .tmu byte string for verification tests."""
+    return build_minimal_tmu()
+
+
+@pytest.fixture
+def valid_tmu_file(tmp_path: Path, valid_tmu_data: bytes) -> Path:
+    """Write a valid .tmu file and return its path."""
+    p = tmp_path / "test.tmu"
+    p.write_bytes(valid_tmu_data)
+    return p
+
+
+def test_verify_ok(valid_tmu_data: bytes):
+    """A freshly built file passes verification."""
+    result = verify_tmu(valid_tmu_data)
+    assert result.ok is True
+    assert result.crc32_ok is True
+    assert result.header_ok is True
+    assert result.frame_count == 2
+
+
+def test_verify_file_ok(valid_tmu_file: Path):
+    """verify_file works on disk."""
+    result = verify_file(valid_tmu_file)
+    assert result.ok is True
+    assert result.frame_count == 2
+
+
+def test_verify_crc32_mismatch(valid_tmu_data: bytes):
+    """Tampering with body bytes should break the CRC-32 check."""
+    corrupted = bytearray(valid_tmu_data)
+    corrupted[10] ^= 0xFF  # flip a byte in the header region
+    result = verify_tmu(bytes(corrupted))
+    assert result.ok is False
+    assert result.crc32_ok is False
+    assert "CRC-32 mismatch" in result.message
+
+
+def test_verify_bad_magic():
+    """File with wrong magic should fail verification."""
+    data = b"BAAD" + b"\x00" * (HEADER_FIXED_SIZE + FOOTER_SIZE)
+    result = verify_tmu(data)
+    assert result.ok is False
+    assert result.header_ok is False
+    assert "Bad magic" in result.message
+
+
+def test_verify_too_small():
+    """File too small should fail verification."""
+    result = verify_tmu(b"tiny")
+    assert result.ok is False
+    assert "File too small" in result.message
+
+
+# ── Repair tests ─────────────────────────────────────────────────────────────
+
+
+def test_repair_corrupted_crc(valid_tmu_data: bytes):
+    """Repair should recover frames from a file with corrupted CRC."""
+    corrupted = bytearray(valid_tmu_data)
+    # Corrupt a byte in the body (but NOT in frame data itself)
+    # Flip a metadata byte that won't affect frame parsing
+    corrupted[10] ^= 0xFF
+    result = verify_tmu(bytes(corrupted))
+    assert result.ok is False
+
+    repaired, recovered, skipped = repair_tmu(bytes(corrupted))
+    # The repaired file should be valid
+    result2 = verify_tmu(repaired)
+    assert result2.ok is True
+    assert recovered == 2
+
+
+def test_repair_file(valid_tmu_file: Path, tmp_path: Path):
+    """repair_file should write a valid file from a corrupted source."""
+    data = bytearray(valid_tmu_file.read_bytes())
+    data[10] ^= 0xFF
+    valid_tmu_file.write_bytes(bytes(data))
+
+    out = tmp_path / "repaired.tmu"
+    recovered, skipped = repair_file(valid_tmu_file, out)
+    assert recovered == 2
+    assert out.exists()
+
+    result = verify_file(out)
+    assert result.ok is True
+
+
+def test_repair_too_small():
+    """Repair should raise on a file too small to parse."""
+    with pytest.raises(TMUCorruptionError, match="too small"):
+        repair_tmu(b"tiny")
+
+
+# ── CLI tests ────────────────────────────────────────────────────────────────
+
+
+def test_verify_cli_ok(valid_tmu_file: Path):
+    """CLI verify should exit 0 for a valid file."""
+    from telemu.recording.verify import main
+
+    rc = main([str(valid_tmu_file)])
+    assert rc == 0
+
+
+def test_verify_cli_corrupted(valid_tmu_file: Path):
+    """CLI verify should exit 2 for a corrupted file."""
+    data = bytearray(valid_tmu_file.read_bytes())
+    data[10] ^= 0xFF
+    valid_tmu_file.write_bytes(bytes(data))
+
+    from telemu.recording.verify import main
+
+    rc = main([str(valid_tmu_file)])
+    assert rc == 2
+
+
+def test_verify_cli_repair(valid_tmu_file: Path):
+    """CLI verify --repair should recover frames."""
+    data = bytearray(valid_tmu_file.read_bytes())
+    data[10] ^= 0xFF
+    valid_tmu_file.write_bytes(bytes(data))
+
+    repaired_path = valid_tmu_file.with_suffix(".repaired.tmu")
+    try:
+        from telemu.recording.verify import main
+
+        rc = main([str(valid_tmu_file), "--repair"])
+        assert rc == 0
+        assert repaired_path.exists()
+    finally:
+        repaired_path.unlink(missing_ok=True)
+
+
+def test_verify_cli_file_not_found():
+    """CLI should exit 1 for a missing file."""
+    from telemu.recording.verify import main
+
+    rc = main(["/tmp/nonexistent.tmu"])
+    assert rc == 1
