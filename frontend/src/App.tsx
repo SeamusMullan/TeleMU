@@ -4,12 +4,16 @@ import AnalyzerPage from "./pages/AnalyzerPage";
 import ExplorerPage from "./pages/ExplorerPage";
 import ConvertPage from "./pages/ConvertPage";
 import SettingsPage from "./pages/SettingsPage";
+import AlertsPage from "./pages/AlertsPage";
+import AlertBanner from "./components/alerts/AlertBanner";
+import AlertFlash from "./components/alerts/AlertFlash";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard" },
   { to: "/explorer", label: "Explorer" },
   { to: "/analyzer", label: "Analyzer" },
   { to: "/convert", label: "Convert" },
+  { to: "/alerts", label: "Alerts" },
   { to: "/settings", label: "Settings" },
 ] as const;
 
@@ -46,9 +50,14 @@ export default function App() {
             <Route path="/explorer" element={<ExplorerPage />} />
             <Route path="/analyzer" element={<AnalyzerPage />} />
             <Route path="/convert" element={<ConvertPage />} />
+            <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </main>
+
+        {/* Global alert overlays */}
+        <AlertFlash />
+        <AlertBanner />
       </div>
     </BrowserRouter>
   );
