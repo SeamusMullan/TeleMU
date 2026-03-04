@@ -15,12 +15,19 @@ from telemu.recording.compressor import (
     read_index,
 )
 from telemu.recording.tmu_format import (
+    CHANNEL_DEF_SIZE,
+    FOOTER_SIZE,
+    HEADER_FIXED_SIZE,
     ChannelDef,
     ChannelType,
+    TMUFooter,
+    TMUHeader,
+    build_minimal_tmu,
     compute_channel_offsets,
     frame_payload_size,
     pack_frame,
     unpack_frame,
+    verify_tmu,
 )
 
 
@@ -221,10 +228,10 @@ _TMU_CHANNELS = [
 compute_channel_offsets(_TMU_CHANNELS)
 
 
-def _make_tmu_frame(i: int) -> bytes:
-    """Build one binary TMU frame with realistic telemetry values."""
+def _make_tmu_frame_values(i: int) -> list[tuple[ChannelType, object]]:
+    """Return channel values for frame *i* matching ``_TMU_CHANNELS``."""
     t = i * (1.0 / 60)
-    values: list[tuple[ChannelType, object]] = [
+    return [
         (ChannelType.FLOAT64, 180.0 + 100 * math.sin(t * 0.3)),       # speed
         (ChannelType.FLOAT64, 4000 + 4000 * (0.5 + 0.5 * math.sin(t * 0.5))),  # rpm
         (ChannelType.FLOAT64, max(0, min(100, 50 + 50 * math.sin(t * 0.4)))),   # throttle
@@ -240,19 +247,87 @@ def _make_tmu_frame(i: int) -> bytes:
         (ChannelType.FLOAT64, 84 + 8 * math.sin(t * 0.1 + 1.5)),     # tyre_rr
         (ChannelType.FLOAT64, 400 + 200 * abs(math.sin(t * 0.3))),    # brake_temp
     ]
-    return pack_frame(t, values)
+
+
+def _make_tmu_frame(i: int) -> bytes:
+    """Build one binary TMU frame with realistic telemetry values."""
+    t = i * (1.0 / 60)
+    return pack_frame(t, _make_tmu_frame_values(i))
+
+
+def _parse_channels(tmu_data: bytes) -> list[ChannelDef]:
+    """Parse channel definitions from a complete ``.tmu`` byte string."""
+    hdr = TMUHeader.unpack(tmu_data)
+    meta_end = HEADER_FIXED_SIZE + len(hdr.metadata_json)
+    channels: list[ChannelDef] = []
+    for i in range(hdr.channel_count):
+        offset = meta_end + i * CHANNEL_DEF_SIZE
+        channels.append(ChannelDef.unpack(tmu_data[offset : offset + CHANNEL_DEF_SIZE]))
+    return channels
 
 
 class TestTMUFormatCompression:
-    """Compress actual TMU-spec binary frames and verify performance."""
+    """Compress actual TMU-spec binary frames from ``build_minimal_tmu()`` files
+    and verify format compliance and performance.
+    """
 
     FRAME_COUNT = 3600  # 60 seconds at 60Hz
 
     @pytest.fixture()
-    def tmu_frames(self):
-        return [_make_tmu_frame(i) for i in range(self.FRAME_COUNT)]
+    def tmu_file_data(self):
+        """Build a complete, valid ``.tmu`` file using ``build_minimal_tmu()``."""
+        channels = [ChannelDef(c.name, c.channel_type, c.unit, c.byte_offset) for c in _TMU_CHANNELS]
+        compute_channel_offsets(channels)
+        frames = [
+            (i * (1.0 / 60), _make_tmu_frame_values(i))
+            for i in range(self.FRAME_COUNT)
+        ]
+        data = build_minimal_tmu(
+            track="Spa-Francorchamps",
+            vehicle="Toyota GR010",
+            driver="TestDriver",
+            channels=channels,
+            frames=frames,
+            metadata={"weather": "clear", "session": "practice"},
+        )
+        return data
 
-    def test_tmu_roundtrip_lz4(self, tmu_frames):
+    @pytest.fixture()
+    def tmu_frames(self, tmu_file_data):
+        """Extract individual frame blobs from the complete ``.tmu`` file."""
+        channels = _parse_channels(tmu_file_data)
+        fsize = frame_payload_size(channels)
+        footer = TMUFooter.unpack(tmu_file_data[-FOOTER_SIZE:])
+        frames: list[bytes] = []
+        for i in range(footer.frame_count):
+            idx_pos = footer.index_offset + i * 8
+            assert idx_pos + 8 <= len(tmu_file_data) - FOOTER_SIZE
+            (frame_offset,) = struct.unpack("<Q", tmu_file_data[idx_pos : idx_pos + 8])
+            assert frame_offset + fsize <= footer.index_offset
+            frames.append(tmu_file_data[frame_offset : frame_offset + fsize])
+        return frames
+
+    def test_generated_tmu_file_is_valid(self, tmu_file_data):
+        """Verify the generated file passes ``verify_tmu()`` checks."""
+        result = verify_tmu(tmu_file_data)
+        assert result.ok, f"verify_tmu failed: {result.message}"
+        assert result.crc32_ok
+        assert result.header_ok
+        assert result.frame_count == self.FRAME_COUNT
+
+    def test_generated_tmu_header(self, tmu_file_data):
+        """Header fields match the format spec (magic, version, channel count)."""
+        from telemu.recording.tmu_format import MAGIC as TMU_MAGIC, FORMAT_VERSION
+        assert tmu_file_data[:4] == TMU_MAGIC
+        hdr = TMUHeader.unpack(tmu_file_data)
+        assert hdr.version == FORMAT_VERSION
+        assert hdr.track_name == "Spa-Francorchamps"
+        assert hdr.vehicle_name == "Toyota GR010"
+        assert hdr.driver_name == "TestDriver"
+        assert hdr.channel_count == len(_TMU_CHANNELS)
+        assert hdr.sample_rate_hz == 60
+
+    def test_tmu_roundtrip_lz4(self, tmu_file_data, tmu_frames):
         """Compress TMU binary frames with LZ4 and verify lossless roundtrip."""
         raw_blob = b"".join(tmu_frames)
         buf = io.BytesIO()
@@ -269,9 +344,10 @@ class TestTMUFormatCompression:
         assert reassembled == raw_blob
 
         # Verify individual frames can be unpacked after decompression
-        fsize = frame_payload_size(_TMU_CHANNELS)
-        for i in range(0, min(5, self.FRAME_COUNT)):
-            ts, vals = unpack_frame(reassembled[i * fsize : (i + 1) * fsize], _TMU_CHANNELS)
+        channels = _parse_channels(tmu_file_data)
+        fsize = frame_payload_size(channels)
+        for i in range(min(5, self.FRAME_COUNT)):
+            ts, vals = unpack_frame(reassembled[i * fsize : (i + 1) * fsize], channels)
             assert isinstance(ts, float)
             assert "speed" in vals
             assert "rpm" in vals
