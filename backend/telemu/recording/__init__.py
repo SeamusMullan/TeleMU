@@ -1,5 +1,8 @@
-"""Recording subsystem — .tmu file format with integrity verification."""
+"""Recording subsystem — binary serialisation and .tmu file format."""
 
+from telemu.recording.channels import ALL_CHANNELS, DEFAULT_CHANNELS
+from telemu.recording.channels import ChannelDef as SerializerChannelDef
+from telemu.recording.serializer import FrameSerializer
 from telemu.recording.tmu_format import (
     CHANNEL_DEF_SIZE,
     FOOTER_SIZE,
@@ -24,13 +27,17 @@ from telemu.recording.tmu_format import (
 )
 
 __all__ = [
+    "ALL_CHANNELS",
     "CHANNEL_DEF_SIZE",
-    "FOOTER_SIZE",
-    "FORMAT_VERSION",
-    "HEADER_FIXED_SIZE",
-    "MAGIC",
     "ChannelDef",
     "ChannelType",
+    "DEFAULT_CHANNELS",
+    "FOOTER_SIZE",
+    "FORMAT_VERSION",
+    "FrameSerializer",
+    "HEADER_FIXED_SIZE",
+    "MAGIC",
+    "SerializerChannelDef",
     "TMUCorruptionError",
     "TMUFooter",
     "TMUHeader",
