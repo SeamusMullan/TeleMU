@@ -12,6 +12,9 @@ import type {
   ConvertResponse,
   RecordingStatus,
   StartRecordingRequest,
+  StreamingClientStatus,
+  StreamConnectRequest,
+  StreamingServerStatus,
 } from "./types";
 
 const BASE = "/api";
@@ -58,4 +61,15 @@ export const api = {
   startRecording: (req: StartRecordingRequest = {}) =>
     post<RecordingStatus>("/live-recording/start", req),
   stopRecording: () => post<RecordingStatus>("/live-recording/stop", {}),
+
+  // Streaming client (engineer side)
+  streamingClientStatus: () => get<StreamingClientStatus>("/streaming/client/status"),
+  streamingConnect: (req: StreamConnectRequest) =>
+    post<StreamingClientStatus>("/streaming/client/connect", req),
+  streamingDisconnect: () => post<StreamingClientStatus>("/streaming/client/disconnect", {}),
+
+  // Streaming server (driver side)
+  streamingStatus: () => get<StreamingServerStatus>("/streaming/status"),
+  streamingStart: () => post<StreamingServerStatus>("/streaming/start", {}),
+  streamingStop: () => post<StreamingServerStatus>("/streaming/stop", {}),
 };

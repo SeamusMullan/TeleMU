@@ -140,6 +140,16 @@ class HealthResponse(BaseModel):
     active_clients: int = 0
 
 
+class StreamingStatus(BaseModel):
+    running: bool = False
+    clients_connected: int = 0
+    data_rate_bps: float = 0.0
+    host: str = ""
+    discovery_port: int = 19740
+    telemetry_port: int = 19741
+    control_port: int = 19742
+
+
 # ── Session metadata ─────────────────────────────────────────────────────────
 
 

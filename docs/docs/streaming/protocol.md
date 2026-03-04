@@ -7,9 +7,9 @@
 
 | Channel | Transport | Port | Purpose |
 |---------|-----------|------|---------|
-| Discovery | UDP broadcast | 9099 | Zero-config driver announcement |
-| Telemetry | UDP unicast/multicast | 9100 | High-frequency frame data |
-| Control | TCP | 9101 | Handshake, subscribe, session info |
+| Discovery | UDP broadcast | 19740 | Zero-config driver announcement |
+| Telemetry | UDP unicast/multicast | 19741 | High-frequency frame data |
+| Control | TCP | 19742 | Handshake, subscribe, session info |
 
 ## Discovery
 
@@ -22,10 +22,10 @@ sequenceDiagram
     participant Engineer as StreamClient
 
     loop Every 2 seconds
-        Driver->>LAN: DISCOVERY_ANNOUNCE (UDP broadcast :9099)
+        Driver->>LAN: DISCOVERY_ANNOUNCE (UDP broadcast :19740)
     end
 
-    Engineer->>LAN: Listen on :9099
+    Engineer->>LAN: Listen on :19740
     LAN-->>Engineer: DISCOVERY_ANNOUNCE
     Note over Engineer: Shows driver in "Available Drivers" list
 ```
@@ -41,8 +41,8 @@ Offset  Size  Field
 39      64    track_name: UTF-8, null-padded
 103     64    vehicle_name: UTF-8, null-padded
 167     1     session_type: uint8
-168     2     tcp_port: uint16 (control port, usually 9101)
-170     2     udp_port: uint16 (telemetry port, usually 9100)
+168     2     tcp_port: uint16 (control port, usually 19742)
+170     2     udp_port: uint16 (telemetry port, usually 19741)
 172     4     session_id: uint32 (unique per session)
 ```
 
@@ -55,7 +55,7 @@ sequenceDiagram
     participant Engineer as StreamClient
     participant Driver as TelemetryStreamer
 
-    Engineer->>Driver: TCP connect to :9101
+    Engineer->>Driver: TCP connect to :19742
     Engineer->>Driver: HELLO (client name, version)
     Driver-->>Engineer: WELCOME (session info, channel list)
     Engineer->>Driver: SUBSCRIBE (channel filter)
