@@ -28,31 +28,29 @@ class ApiExplorerTab(QWidget):
     def __init__(self, sender):
         super().__init__()
         self.sender = sender
-
         self.presets = {
             "Health": ("GET", "/api/health", ""),
             "List Sessions": ("GET", "/api/sessions", ""),
             "List Tables": ("GET", "/api/tables", ""),
             "Run Query": ("POST", "/api/query", '{"sql":"SELECT 1 as ok"}'),
             "Lovense Status": ("GET", "/api/lovense/status", ""),
-            "Lovense Resolve LAN": ("POST", "/api/lovense/resolve-lan", '{"token":"","uid":""}'),
-            "Lovense Connect": ("POST", "/api/lovense/connect", '{"domain":"","https_port":30010}'),
+            "Lovense Detect Local": ("GET", "/api/lovense/detect-local", ""),
+            "Lovense Connect Local": ("POST", "/api/lovense/connect-local", "{}"),
             "Lovense Get Toys": ("POST", "/api/lovense/get-toys", "{}"),
             "Lovense Function": ("POST", "/api/lovense/function", '{"action":"Vibrate:5","time_sec":2}'),
             "Lovense Stop": ("POST", "/api/lovense/stop", "{}"),
         }
 
         layout = QVBoxLayout()
-
-        preset_row = QHBoxLayout()
+        row = QHBoxLayout()
         self.preset_box = QComboBox()
         self.preset_box.addItems(self.presets.keys())
-        self.preset_btn = QPushButton("Load Preset")
-        self.preset_btn.clicked.connect(self.load_preset)
-        preset_row.addWidget(QLabel("Preset"))
-        preset_row.addWidget(self.preset_box)
-        preset_row.addWidget(self.preset_btn)
-        layout.addLayout(preset_row)
+        self.load_btn = QPushButton("Load Preset")
+        self.load_btn.clicked.connect(self.load_preset)
+        row.addWidget(QLabel("Preset"))
+        row.addWidget(self.preset_box)
+        row.addWidget(self.load_btn)
+        layout.addLayout(row)
 
         form = QFormLayout()
         self.method = QComboBox()
@@ -64,22 +62,21 @@ class ApiExplorerTab(QWidget):
 
         self.body = QPlainTextEdit()
         self.body.setPlaceholderText("JSON body")
-        self.body.setMaximumHeight(140)
+        self.body.setMaximumHeight(130)
         layout.addWidget(self.body)
 
-        send_row = QHBoxLayout()
+        btn_row = QHBoxLayout()
         self.send_btn = QPushButton("Send")
-        self.send_btn.clicked.connect(self.send)
         self.clear_btn = QPushButton("Clear Output")
-        self.clear_btn.clicked.connect(self.clear_output)
-        send_row.addWidget(self.send_btn)
-        send_row.addWidget(self.clear_btn)
-        layout.addLayout(send_row)
+        self.send_btn.clicked.connect(self.send)
+        self.clear_btn.clicked.connect(self.output.clear)
+        btn_row.addWidget(self.send_btn)
+        btn_row.addWidget(self.clear_btn)
+        layout.addLayout(btn_row)
 
         self.output = QPlainTextEdit()
         self.output.setReadOnly(True)
         layout.addWidget(self.output)
-
         self.setLayout(layout)
         self.load_preset()
 
@@ -89,25 +86,21 @@ class ApiExplorerTab(QWidget):
         self.path.setText(path)
         self.body.setPlainText(body)
 
-    def clear_output(self):
-        self.output.clear()
-
     def send(self):
         method = self.method.currentText()
         path = self.path.text().strip()
-        body_text = self.body.toPlainText().strip()
         payload = None
         if method == "POST":
-            if body_text:
+            raw = self.body.toPlainText().strip()
+            if raw:
                 try:
-                    payload = json.loads(body_text)
+                    payload = json.loads(raw)
                 except json.JSONDecodeError as exc:
                     QMessageBox.critical(self, "Invalid JSON", str(exc))
                     return
             else:
                 payload = {}
-        result = self.sender(method, path, payload)
-        self.output.appendPlainText(result)
+        self.output.appendPlainText(self.sender(method, path, payload))
 
 
 class LovenseTab(QWidget):
@@ -117,16 +110,9 @@ class LovenseTab(QWidget):
         self.settings = settings
 
         layout = QVBoxLayout()
-
         form = QGridLayout()
-        self.token = QLineEdit(str(self.settings.value("lovense/token", "")))
-        self.token.setPlaceholderText("Optional (cloud fallback only)")
-        self.uid = QLineEdit(str(self.settings.value("lovense/uid", "")))
-        self.uid.setReadOnly(True)
-        self.uid.setPlaceholderText("Auto-fetched from Lovense")
-        self.auth_code = QLineEdit(str(self.settings.value("lovense/auth_code", "")))
-        self.auth_code.setPlaceholderText("Optional (cloud fallback only)")
-        self.domain = QLineEdit(str(self.settings.value("lovense/domain", "127-0-0-1.lovense.club")))
+        self.domain = QLineEdit(str(self.settings.value("lovense/domain", "")))
+        self.domain.setReadOnly(True)
         self.port = QSpinBox()
         self.port.setRange(1, 65535)
         self.port.setValue(int(self.settings.value("lovense/https_port", 30010)))
@@ -137,135 +123,59 @@ class LovenseTab(QWidget):
         self.toy = QLineEdit()
         self.auto_connect_startup = QCheckBox("Auto-connect on startup")
         self.auto_connect_startup.setChecked(
-            str(self.settings.value("lovense/auto_connect_startup", "false")).lower() == "true"
+            str(self.settings.value("lovense/auto_connect_startup", "true")).lower() == "true"
         )
 
-        form.addWidget(QLabel("Token"), 0, 0)
-        form.addWidget(self.token, 0, 1)
-        form.addWidget(QLabel("UID"), 0, 2)
-        form.addWidget(self.uid, 0, 3)
-        form.addWidget(QLabel("Auth Code"), 1, 0)
-        form.addWidget(self.auth_code, 1, 1, 1, 3)
-        form.addWidget(QLabel("Domain"), 2, 0)
-        form.addWidget(self.domain, 2, 1)
-        form.addWidget(QLabel("HTTPS Port"), 2, 2)
-        form.addWidget(self.port, 2, 3)
-        form.addWidget(QLabel("Action"), 3, 0)
-        form.addWidget(self.action, 3, 1)
-        form.addWidget(QLabel("Time Sec"), 3, 2)
-        form.addWidget(self.time_sec, 3, 3)
-        form.addWidget(QLabel("Toy"), 4, 0)
-        form.addWidget(self.toy, 4, 1)
-        form.addWidget(self.auto_connect_startup, 4, 2, 1, 2)
+        form.addWidget(QLabel("Detected Domain"), 0, 0)
+        form.addWidget(self.domain, 0, 1)
+        form.addWidget(QLabel("HTTPS Port"), 0, 2)
+        form.addWidget(self.port, 0, 3)
+        form.addWidget(QLabel("Action"), 1, 0)
+        form.addWidget(self.action, 1, 1)
+        form.addWidget(QLabel("Time Sec"), 1, 2)
+        form.addWidget(self.time_sec, 1, 3)
+        form.addWidget(QLabel("Toy"), 2, 0)
+        form.addWidget(self.toy, 2, 1)
+        form.addWidget(self.auto_connect_startup, 2, 2, 1, 2)
         layout.addLayout(form)
 
         buttons = QGridLayout()
         self.status_btn = QPushButton("Status")
         self.detect_btn = QPushButton("Detect Local App")
         self.local_btn = QPushButton("Local Connect")
-        self.uid_btn = QPushButton("Refresh UID")
-        self.resolve_btn = QPushButton("Resolve LAN")
-        self.connect_btn = QPushButton("Connect")
-        self.auto_connect_btn = QPushButton("Auto Connect")
         self.toys_btn = QPushButton("Get Toys")
         self.function_btn = QPushButton("Function")
         self.stop_btn = QPushButton("Stop")
         self.clear_btn = QPushButton("Clear Output")
 
         self.status_btn.clicked.connect(self.status)
-        self.detect_btn.clicked.connect(self.detect_local_app)
+        self.detect_btn.clicked.connect(self.detect_local)
         self.local_btn.clicked.connect(self.local_connect)
-        self.uid_btn.clicked.connect(self.fetch_uid_from_oauth)
-        self.resolve_btn.clicked.connect(self.resolve_lan)
-        self.connect_btn.clicked.connect(self.connect_lan)
-        self.auto_connect_btn.clicked.connect(self.auto_connect)
         self.toys_btn.clicked.connect(self.get_toys)
         self.function_btn.clicked.connect(self.send_function)
         self.stop_btn.clicked.connect(self.stop)
-        self.clear_btn.clicked.connect(lambda: self.output.clear())
-        self.token.editingFinished.connect(self.save_settings)
-        self.auth_code.editingFinished.connect(self.save_settings)
-        self.token.editingFinished.connect(self.try_refresh_uid)
-        self.auth_code.editingFinished.connect(self.try_refresh_uid)
-        self.domain.editingFinished.connect(self.save_settings)
-        self.port.valueChanged.connect(self.save_settings)
+        self.clear_btn.clicked.connect(self.clear_output)
         self.auto_connect_startup.stateChanged.connect(self.save_settings)
 
         buttons.addWidget(self.status_btn, 0, 0)
         buttons.addWidget(self.detect_btn, 0, 1)
         buttons.addWidget(self.local_btn, 0, 2)
-        buttons.addWidget(self.uid_btn, 0, 3)
-        buttons.addWidget(self.resolve_btn, 1, 0)
-        buttons.addWidget(self.connect_btn, 1, 1)
-        buttons.addWidget(self.auto_connect_btn, 1, 2)
-        buttons.addWidget(self.toys_btn, 1, 3)
-        buttons.addWidget(self.function_btn, 2, 1)
-        buttons.addWidget(self.stop_btn, 2, 2)
+        buttons.addWidget(self.toys_btn, 0, 3)
+        buttons.addWidget(self.function_btn, 1, 2)
+        buttons.addWidget(self.stop_btn, 1, 3)
         buttons.addWidget(self.clear_btn, 2, 3)
         layout.addLayout(buttons)
 
         self.output = QPlainTextEdit()
         self.output.setReadOnly(True)
         layout.addWidget(self.output)
-
         self.setLayout(layout)
 
     def _log(self, text):
         ts = datetime.now().strftime("%H:%M:%S")
         self.output.appendPlainText(f"[{ts}] {text}")
 
-    def save_settings(self):
-        self.settings.setValue("lovense/token", self.token.text().strip())
-        self.settings.setValue("lovense/uid", self.uid.text().strip())
-        self.settings.setValue("lovense/auth_code", self.auth_code.text().strip())
-        self.settings.setValue("lovense/domain", self.domain.text().strip())
-        self.settings.setValue("lovense/https_port", self.port.value())
-        self.settings.setValue(
-            "lovense/auto_connect_startup",
-            "true" if self.auto_connect_startup.isChecked() else "false",
-        )
-
-    def fetch_uid_from_oauth(self):
-        token = self.token.text().strip()
-        auth_code = self.auth_code.text().strip()
-        if not token:
-            QMessageBox.warning(self, "Missing data", "Token is required.")
-            return
-        try:
-            payload_in = {"token": token}
-            if auth_code:
-                payload_in["code"] = auth_code
-            with httpx.Client(timeout=10.0) as client:
-                resp = client.post(
-                    "https://appgallery.lovense.com/remote-dev-api/oauth",
-                    json=payload_in,
-                )
-            payload = resp.json()
-        except Exception as exc:
-            self._log(f"Get UID (OAuth) failed: {exc}")
-            return
-        user_id = None
-        if isinstance(payload, dict):
-            data = payload.get("data")
-            if isinstance(data, dict):
-                if isinstance(data.get("userId"), str):
-                    user_id = data["userId"].strip()
-                elif isinstance(data.get("uid"), str):
-                    user_id = data["uid"].strip()
-        if user_id:
-            self.uid.setText(user_id)
-            self.save_settings()
-            self._log(f"Resolved UID: {user_id}")
-            return
-        self._log(
-            f"UID not returned from Lovense with current token/auth code. Response: {json.dumps(payload)}"
-        )
-
-    def try_refresh_uid(self):
-        self.save_settings()
-        self.fetch_uid_from_oauth()
-
-    def _parse_sender_response(self, response_text):
+    def _parse(self, response_text):
         try:
             header, body = response_text.split("\n", 1)
             status = int(header.rsplit("->", 1)[1].strip())
@@ -274,152 +184,50 @@ class LovenseTab(QWidget):
         except Exception:
             return None, None
 
-    def _looks_successful(self, status, payload):
-        if status is None or status >= 400:
-            return False
-        if isinstance(payload, dict):
-            code = payload.get("code")
-            if isinstance(code, int) and code not in (0, 200):
-                return False
-            if isinstance(code, str) and code not in ("0", "200"):
-                return False
-        return True
+    def save_settings(self):
+        self.settings.setValue("lovense/domain", self.domain.text().strip())
+        self.settings.setValue("lovense/https_port", self.port.value())
+        self.settings.setValue(
+            "lovense/auto_connect_startup",
+            "true" if self.auto_connect_startup.isChecked() else "false",
+        )
 
-    def _extract_domain_port(self, obj):
-        domain = None
-        https_port = None
-
-        def walk(node):
-            nonlocal domain, https_port
-            if isinstance(node, dict):
-                raw_domain = node.get("domain") or node.get("wsDomain")
-                if isinstance(raw_domain, str) and raw_domain.strip():
-                    domain = raw_domain.strip()
-                raw_port = node.get("httpsPort") or node.get("https_port")
-                if isinstance(raw_port, int):
-                    https_port = raw_port
-                elif isinstance(raw_port, str) and raw_port.isdigit():
-                    https_port = int(raw_port)
-                for value in node.values():
-                    walk(value)
-            elif isinstance(node, list):
-                for item in node:
-                    walk(item)
-
-        walk(obj)
-        return domain, https_port
+    def clear_output(self):
+        self.output.clear()
 
     def status(self):
         self._log(self.sender("GET", "/api/lovense/status", None))
 
-    def resolve_lan(self):
-        token = self.token.text().strip()
-        uid = self.uid.text().strip()
-        if not token or not uid:
-            QMessageBox.warning(self, "Missing data", "Token and UID are required.")
-            return
-        result = self.sender("POST", "/api/lovense/resolve-lan", {"token": token, "uid": uid})
+    def detect_local(self):
+        result = self.sender("GET", "/api/lovense/detect-local", None)
         self._log(result)
-        status, payload = self._parse_sender_response(result)
-        if status is None or payload is None or status >= 400:
+        status, payload = self._parse(result)
+        if status is None or status >= 400 or not isinstance(payload, dict):
             return False
-        domain, https_port = self._extract_domain_port(payload)
-        if domain:
-            self.domain.setText(domain)
-        if https_port:
-            self.port.setValue(https_port)
-        self.save_settings()
-        return bool(domain)
-
-    def connect_lan(self):
-        domain = self.domain.text().strip()
-        if not domain:
-            QMessageBox.warning(self, "Missing domain", "Domain is required.")
-            return False
-        result = self.sender(
-            "POST",
-            "/api/lovense/connect",
-            {"domain": domain, "https_port": self.port.value()},
-        )
-        self._log(result)
-        status, payload = self._parse_sender_response(result)
-        self.save_settings()
-        return self._looks_successful(status, payload)
-
-    def _extract_apps(self, payload):
-        if not isinstance(payload, dict):
-            return []
-        data = payload.get("data")
-        if isinstance(data, list):
-            return [x for x in data if isinstance(x, dict)]
-        if isinstance(data, dict):
-            return [data]
-        return []
-
-    def detect_local_app(self):
-        try:
-            with httpx.Client(timeout=10.0) as client:
-                resp = client.get("https://api.lovense-api.com/api/lan/v2/app")
-            payload = resp.json()
-        except Exception as exc:
-            self._log(f"Detect local app failed: {exc}")
-            return False
-
-        code = payload.get("code") if isinstance(payload, dict) else None
-        apps = self._extract_apps(payload)
-        if code not in (0, "0") or not apps:
-            self._log(f"Detect local app returned no usable app: {json.dumps(payload)}")
-            return False
-
-        app = next((a for a in apps if a.get("online") is True), apps[0])
-        domain = app.get("domain")
-        https_port = app.get("httpsPort")
+        domain = payload.get("domain")
+        https_port = payload.get("https_port")
         if isinstance(domain, str) and domain.strip():
             self.domain.setText(domain.strip())
         if isinstance(https_port, int):
             self.port.setValue(https_port)
-        elif isinstance(https_port, str) and https_port.isdigit():
-            self.port.setValue(int(https_port))
         self.save_settings()
-        self._log(
-            f"Detected local app domain={self.domain.text().strip()} httpsPort={self.port.value()}"
-        )
         return bool(self.domain.text().strip())
 
     def local_connect(self):
-        if not self.detect_local_app():
-            self.domain.setText("127-0-0-1.lovense.club")
-            self.port.setValue(30010)
-            self._log("Falling back to localhost Lovense domain.")
-        if not self.connect_lan():
-            self._log("Local connect failed.")
+        result = self.sender("POST", "/api/lovense/connect-local", {})
+        self._log(result)
+        status, payload = self._parse(result)
+        if status is None or status >= 400:
             return False
-        toys_result = self.sender("POST", "/api/lovense/get-toys", {})
-        self._log(toys_result)
-        status, payload = self._parse_sender_response(toys_result)
-        if self._looks_successful(status, payload):
-            self._log("Local app control is ready.")
-            return True
-        self._log("Connected locally but Get Toys did not succeed.")
-        return False
-
-    def auto_connect(self):
-        if self.local_connect():
-            self._log("Auto-connect succeeded (local desktop app).")
-            return
-        if not self.uid.text().strip() and self.token.text().strip():
-            self.fetch_uid_from_oauth()
-        has_domain = bool(self.domain.text().strip())
-        if not has_domain:
-            has_domain = self.resolve_lan()
-        if not has_domain:
-            self._log("Auto-connect could not determine a domain.")
-            return
-        ok = self.connect_lan()
-        if ok:
-            self._log("Auto-connect succeeded (cloud-resolved).")
-        else:
-            self._log("Auto-connect failed.")
+        if isinstance(payload, dict):
+            domain = payload.get("domain")
+            https_port = payload.get("https_port")
+            if isinstance(domain, str) and domain.strip():
+                self.domain.setText(domain.strip())
+            if isinstance(https_port, int):
+                self.port.setValue(https_port)
+        self.save_settings()
+        return True
 
     def get_toys(self):
         self._log(self.sender("POST", "/api/lovense/get-toys", {}))
@@ -429,11 +237,7 @@ class LovenseTab(QWidget):
         if not action:
             QMessageBox.warning(self, "Missing action", "Action is required.")
             return
-        payload = {
-            "action": action,
-            "time_sec": self.time_sec.value(),
-            "toy": self.toy.text().strip(),
-        }
+        payload = {"action": action, "time_sec": self.time_sec.value(), "toy": self.toy.text().strip()}
         self._log(self.sender("POST", "/api/lovense/function", payload))
 
     def stop(self):
@@ -448,7 +252,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("TeleMU Backend Test UI")
-        self.resize(1100, 760)
+        self.resize(1080, 760)
         self.settings = QSettings("TeleMU", "BackendTestUI")
 
         root = QWidget()
@@ -467,7 +271,7 @@ class MainWindow(QMainWindow):
 
         tabs = QTabWidget()
         self.lovense_tab = LovenseTab(self.send_request, self.settings)
-        tabs.addTab(self.lovense_tab, "External API (Lovense)")
+        tabs.addTab(self.lovense_tab, "External API (Lovense Local)")
         tabs.addTab(ApiExplorerTab(self.send_request), "API Explorer")
         layout.addWidget(tabs)
         QTimer.singleShot(300, self.auto_connect_on_startup)
@@ -477,7 +281,7 @@ class MainWindow(QMainWindow):
 
     def auto_connect_on_startup(self):
         if self.lovense_tab.auto_connect_startup.isChecked():
-            self.lovense_tab.auto_connect()
+            self.lovense_tab.local_connect()
 
     def send_request(self, method, path, payload):
         base = self.base_url.text().strip().rstrip("/")
