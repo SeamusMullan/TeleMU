@@ -54,6 +54,16 @@
     "files": [
       "dist/**/*",
       "electron/**/*"
-    ]
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist/telemu.exe",
+        "to": "telemu.exe"
+      }
+    ],
+    "win": {
+      "target": "dir",
+      "icon": "electron/icons/icon.ico"
+    }
   }
 }

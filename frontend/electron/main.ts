@@ -1,13 +1,79 @@
-/** Electron main process — window management, tray, IPC. */
+/** Electron main process — window management, tray, IPC, backend lifecycle. */
 
 import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, Notification } from "electron";
+import { spawn, ChildProcess } from "child_process";
 import path from "path";
+import http from "http";
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let minimizeToTray = true;
 let startMinimized = false;
+let backendProcess: ChildProcess | null = null;
+
+const isDev = process.env.NODE_ENV === "development";
+
+/* ------------------------------------------------------------------ */
+/*  Backend process management                                         */
+/* ------------------------------------------------------------------ */
+
+function getBackendExePath(): string {
+  return path.join(process.resourcesPath, "telemu.exe");
+}
+
+function spawnBackend(): void {
+  const exePath = getBackendExePath();
+  backendProcess = spawn(exePath, [], {
+    stdio: "pipe",
+    windowsHide: true,
+  });
+
+  backendProcess.on("error", (err) => {
+    console.error("Failed to start backend:", err.message);
+  });
+
+  backendProcess.on("exit", (code) => {
+    if (!isQuitting) {
+      console.error(`Backend exited unexpectedly with code ${code}`);
+    }
+    backendProcess = null;
+  });
+}
+
+function killBackend(): void {
+  if (backendProcess && !backendProcess.killed) {
+    backendProcess.kill();
+    backendProcess = null;
+  }
+}
+
+function waitForBackend(maxRetries = 30, intervalMs = 500): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const check = () => {
+      attempts++;
+      const req = http.get("http://127.0.0.1:8000/api/health", (res) => {
+        if (res.statusCode === 200) {
+          resolve();
+        } else if (attempts < maxRetries) {
+          setTimeout(check, intervalMs);
+        } else {
+          reject(new Error("Backend health check failed after max retries"));
+        }
+      });
+      req.on("error", () => {
+        if (attempts < maxRetries) {
+          setTimeout(check, intervalMs);
+        } else {
+          reject(new Error("Backend did not start in time"));
+        }
+      });
+      req.end();
+    };
+    check();
+  });
+}
 
 /** Current status used by tray icon and context menu. */
 let trayStatus: { connected: boolean; recording: boolean } = {
@@ -125,7 +191,6 @@ function createWindow() {
   });
 
   // In dev, load from Vite dev server; in prod, load built files
-  const isDev = process.env.NODE_ENV === "development";
   if (isDev) {
     mainWindow.loadURL("http://localhost:5173");
     mainWindow.webContents.openDevTools();
@@ -179,14 +244,26 @@ function registerIPC() {
 /*  App lifecycle                                                      */
 /* ------------------------------------------------------------------ */
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   registerIPC();
+
+  // In production, spawn the backend exe and wait for it to be ready
+  if (!isDev) {
+    spawnBackend();
+    try {
+      await waitForBackend();
+    } catch (err) {
+      console.error("Backend failed to start:", err);
+    }
+  }
+
   createTray();
   createWindow();
 });
 
 app.on("before-quit", () => {
   isQuitting = true;
+  killBackend();
 });
 
 app.on("window-all-closed", () => {
