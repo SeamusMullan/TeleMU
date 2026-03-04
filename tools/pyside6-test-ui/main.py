@@ -120,11 +120,13 @@ class LovenseTab(QWidget):
 
         form = QGridLayout()
         self.token = QLineEdit(str(self.settings.value("lovense/token", "")))
+        self.token.setPlaceholderText("Optional (cloud fallback only)")
         self.uid = QLineEdit(str(self.settings.value("lovense/uid", "")))
         self.uid.setReadOnly(True)
         self.uid.setPlaceholderText("Auto-fetched from Lovense")
         self.auth_code = QLineEdit(str(self.settings.value("lovense/auth_code", "")))
-        self.domain = QLineEdit(str(self.settings.value("lovense/domain", "")))
+        self.auth_code.setPlaceholderText("Optional (cloud fallback only)")
+        self.domain = QLineEdit(str(self.settings.value("lovense/domain", "127-0-0-1.lovense.club")))
         self.port = QSpinBox()
         self.port.setRange(1, 65535)
         self.port.setValue(int(self.settings.value("lovense/https_port", 30010)))
@@ -159,6 +161,7 @@ class LovenseTab(QWidget):
 
         buttons = QGridLayout()
         self.status_btn = QPushButton("Status")
+        self.local_btn = QPushButton("Local Connect")
         self.uid_btn = QPushButton("Refresh UID")
         self.resolve_btn = QPushButton("Resolve LAN")
         self.connect_btn = QPushButton("Connect")
@@ -169,6 +172,7 @@ class LovenseTab(QWidget):
         self.clear_btn = QPushButton("Clear Output")
 
         self.status_btn.clicked.connect(self.status)
+        self.local_btn.clicked.connect(self.local_connect)
         self.uid_btn.clicked.connect(self.fetch_uid_from_oauth)
         self.resolve_btn.clicked.connect(self.resolve_lan)
         self.connect_btn.clicked.connect(self.connect_lan)
@@ -186,13 +190,14 @@ class LovenseTab(QWidget):
         self.auto_connect_startup.stateChanged.connect(self.save_settings)
 
         buttons.addWidget(self.status_btn, 0, 0)
-        buttons.addWidget(self.uid_btn, 0, 1)
-        buttons.addWidget(self.resolve_btn, 0, 2)
-        buttons.addWidget(self.connect_btn, 0, 3)
-        buttons.addWidget(self.auto_connect_btn, 1, 0)
-        buttons.addWidget(self.toys_btn, 1, 1)
-        buttons.addWidget(self.function_btn, 1, 2)
-        buttons.addWidget(self.stop_btn, 1, 3)
+        buttons.addWidget(self.local_btn, 0, 1)
+        buttons.addWidget(self.uid_btn, 0, 2)
+        buttons.addWidget(self.resolve_btn, 0, 3)
+        buttons.addWidget(self.connect_btn, 1, 0)
+        buttons.addWidget(self.auto_connect_btn, 1, 1)
+        buttons.addWidget(self.toys_btn, 1, 2)
+        buttons.addWidget(self.function_btn, 1, 3)
+        buttons.addWidget(self.stop_btn, 2, 2)
         buttons.addWidget(self.clear_btn, 2, 3)
         layout.addLayout(buttons)
 
@@ -266,6 +271,17 @@ class LovenseTab(QWidget):
         except Exception:
             return None, None
 
+    def _looks_successful(self, status, payload):
+        if status is None or status >= 400:
+            return False
+        if isinstance(payload, dict):
+            code = payload.get("code")
+            if isinstance(code, int) and code not in (0, 200):
+                return False
+            if isinstance(code, str) and code not in ("0", "200"):
+                return False
+        return True
+
     def _extract_domain_port(self, obj):
         domain = None
         https_port = None
@@ -323,11 +339,29 @@ class LovenseTab(QWidget):
             {"domain": domain, "https_port": self.port.value()},
         )
         self._log(result)
-        status, _payload = self._parse_sender_response(result)
+        status, payload = self._parse_sender_response(result)
         self.save_settings()
-        return status is not None and status < 400
+        return self._looks_successful(status, payload)
+
+    def local_connect(self):
+        self.domain.setText("127-0-0-1.lovense.club")
+        self.port.setValue(30010)
+        if not self.connect_lan():
+            self._log("Local connect failed.")
+            return False
+        toys_result = self.sender("POST", "/api/lovense/get-toys", {})
+        self._log(toys_result)
+        status, payload = self._parse_sender_response(toys_result)
+        if self._looks_successful(status, payload):
+            self._log("Local app control is ready.")
+            return True
+        self._log("Connected locally but Get Toys did not succeed.")
+        return False
 
     def auto_connect(self):
+        if self.local_connect():
+            self._log("Auto-connect succeeded (local desktop app).")
+            return
         if not self.uid.text().strip() and self.token.text().strip():
             self.fetch_uid_from_oauth()
         has_domain = bool(self.domain.text().strip())
@@ -338,7 +372,7 @@ class LovenseTab(QWidget):
             return
         ok = self.connect_lan()
         if ok:
-            self._log("Auto-connect succeeded.")
+            self._log("Auto-connect succeeded (cloud-resolved).")
         else:
             self._log("Auto-connect failed.")
 
