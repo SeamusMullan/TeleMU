@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     streaming_control_port: int = 19742
     streaming_driver_name: str = ""  # empty = system hostname
 
+    # Streaming client (engineer side) — auto-connect on startup
+    streaming_connect_host: str = ""  # empty = not auto-connected
+    streaming_connect_port: int = 19742  # driver server TCP control port
+
     # CORS (for development; Electron doesn't need this)
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 

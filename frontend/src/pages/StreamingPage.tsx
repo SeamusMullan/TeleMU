@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/rest";
-import type { StreamingStatus } from "../api/types";
+import type { StreamingClientStatus } from "../api/types";
 
-const DEFAULT_PORT = 9101;
+const DEFAULT_PORT = 19742;
 const POLL_INTERVAL_MS = 2000;
 
 const STATE_COLORS: Record<string, string> = {
@@ -17,7 +17,7 @@ const STATE_COLORS: Record<string, string> = {
 export default function StreamingPage() {
   const [host, setHost] = useState("");
   const [port, setPort] = useState(DEFAULT_PORT);
-  const [status, setStatus] = useState<StreamingStatus | null>(null);
+  const [status, setStatus] = useState<StreamingClientStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -25,7 +25,7 @@ export default function StreamingPage() {
   // Poll status periodically so the UI stays in sync.
   const fetchStatus = () => {
     api
-      .streamingStatus()
+      .streamingClientStatus()
       .then((s) => {
         setStatus(s);
         setError(null);
@@ -204,8 +204,8 @@ export default function StreamingPage() {
         <div className="rounded-lg bg-neutral-900 p-4 text-xs text-neutral-500">
           <p className="mb-1 font-semibold text-neutral-400">Protocol notes</p>
           <ul className="list-inside list-disc space-y-0.5">
-            <li>TCP control channel (default port 9101)</li>
-            <li>UDP telemetry data (default port 9100)</li>
+            <li>TCP control channel (default port 19742)</li>
+            <li>UDP telemetry data (default port 19741)</li>
             <li>100 ms jitter buffer for smooth display</li>
             <li>Auto-reconnects with exponential back-off</li>
             <li>Packet loss is skipped — no stalling</li>

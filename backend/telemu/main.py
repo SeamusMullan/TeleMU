@@ -57,6 +57,9 @@ async def lifespan(app: FastAPI):
     app.state.ws_manager = ws_manager
     app.state.db_conn = None
 
+    # Create streaming client (engineer side)
+    app.state.streaming_client = StreamingClient(ws_manager)
+
     # Create streaming server (not started yet; user starts via UI/API)
     streamer = TelemetryStreamer(
         host=settings.streaming_host,
@@ -80,9 +83,9 @@ async def lifespan(app: FastAPI):
     await reader.start()
 
     # Auto-connect streaming client if configured
-    if settings.streaming_host:
+    if settings.streaming_connect_host:
         await app.state.streaming_client.start(
-            settings.streaming_host, settings.streaming_port
+            settings.streaming_connect_host, settings.streaming_connect_port
         )
 
     logger.info("TeleMU v%s started (demo=%s)", __version__, settings.demo_mode)

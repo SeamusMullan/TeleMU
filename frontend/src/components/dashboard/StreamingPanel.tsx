@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { api } from "../../api/rest";
-import type { StreamingStatus } from "../../api/types";
+import type { StreamingServerStatus } from "../../api/types";
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -12,7 +12,7 @@ function formatRate(bps: number): string {
 }
 
 export default function StreamingPanel() {
-  const [status, setStatus] = useState<StreamingStatus | null>(null);
+  const [status, setStatus] = useState<StreamingServerStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
   const fetchStatus = useCallback(() => {
