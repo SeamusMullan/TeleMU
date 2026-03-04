@@ -7,6 +7,9 @@ import type {
   QueryResult,
   SessionInfo,
   HealthResponse,
+  TmuFileInfo,
+  ConvertRequest,
+  ConvertResponse,
 } from "./types";
 
 const BASE = "/api";
@@ -46,4 +49,6 @@ export const api = {
     ),
   stats: (table: string) => get<ColumnStats[]>(`/tables/${table}/stats`),
   query: (sql: string) => post<QueryResult>("/query", { sql }),
+  tmuFiles: () => get<TmuFileInfo[]>("/convert/tmu-files"),
+  convert: (req: ConvertRequest) => post<ConvertResponse>("/convert", req),
 };

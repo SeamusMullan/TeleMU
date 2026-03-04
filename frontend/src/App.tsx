@@ -2,12 +2,14 @@ import { BrowserRouter, Routes, Route, NavLink } from "react-router";
 import DashboardPage from "./pages/DashboardPage";
 import AnalyzerPage from "./pages/AnalyzerPage";
 import ExplorerPage from "./pages/ExplorerPage";
+import ConvertPage from "./pages/ConvertPage";
 import SettingsPage from "./pages/SettingsPage";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard" },
   { to: "/explorer", label: "Explorer" },
   { to: "/analyzer", label: "Analyzer" },
+  { to: "/convert", label: "Convert" },
   { to: "/settings", label: "Settings" },
 ] as const;
 
@@ -43,6 +45,7 @@ export default function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/explorer" element={<ExplorerPage />} />
             <Route path="/analyzer" element={<AnalyzerPage />} />
+            <Route path="/convert" element={<ConvertPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </main>
