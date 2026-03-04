@@ -26,8 +26,18 @@ class FakeLovenseClient:
             "verify_tls": False,
         }
 
-    async def resolve_lan(self, token: str, uid: str):
-        return {"code": 200, "message": "OK", "data": {"token": token, "uid": uid}}
+    async def detect_local(self):
+        self.configure("local.lovense.test", 30010)
+        return {
+            "domain": "local.lovense.test",
+            "https_port": 30010,
+            "online": True,
+            "source": "discovery",
+        }
+
+    async def connect_local(self):
+        await self.detect_local()
+        return {"ok": True}
 
     async def get_toys(self):
         return {"code": 200, "message": "OK", "data": {"toys": {}}}
@@ -61,12 +71,20 @@ async def test_lovense_status(client):
 
 
 @pytest.mark.anyio
-async def test_lovense_connect(client):
-    resp = await client.post("/api/lovense/connect", json={"domain": "127-0-0-1.lovense.club"})
+async def test_lovense_detect_local(client):
+    resp = await client.get("/api/lovense/detect-local")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["domain"] == "local.lovense.test"
+
+
+@pytest.mark.anyio
+async def test_lovense_connect_local(client):
+    resp = await client.post("/api/lovense/connect-local")
     assert resp.status_code == 200
     data = resp.json()
     assert data["configured"] is True
-    assert data["domain"] == "127-0-0-1.lovense.club"
+    assert data["domain"] == "local.lovense.test"
 
 
 @pytest.mark.anyio
