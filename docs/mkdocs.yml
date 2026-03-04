@@ -34,6 +34,7 @@ nav:
       - Data Structures: shared-memory/data-structures.md
   - Recording:
       - Overview: recording/overview.md
+      - File Format Spec: recording/format-spec.md
       - Playback & Conversion: recording/playback.md
   - Streaming:
       - Overview: streaming/overview.md
