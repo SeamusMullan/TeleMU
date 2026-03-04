@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  backend-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --group dev
+
+      - name: Run tests
+        working-directory: backend
+        run: uv run pytest --junitxml=test-results.xml -q
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-results
+          path: backend/test-results.xml
+
+  windows-build:
+    needs: backend-test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync
+
+      - name: Install PyInstaller
+        working-directory: backend
+        run: uv pip install pyinstaller
+
+      - name: Build with PyInstaller
+        working-directory: backend
+        run: uv run pyinstaller --onefile --name telemu telemu/main.py
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: telemu-windows
+          path: backend/dist/telemu.exe
+
+  release:
+    needs: windows-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: telemu-windows
+          path: dist/
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes from CHANGELOG
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk "/^## \[${version}\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md > /tmp/release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: TeleMU ${{ steps.version.outputs.VERSION }}
+          body_path: /tmp/release-notes.md
+          files: dist/telemu.exe
+          draft: false
+          prerelease: false
