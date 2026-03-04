@@ -115,6 +115,20 @@ export interface ConvertResponse {
   converted: number;
 }
 
+// Live recording
+export interface RecordingStatus {
+  active: boolean;
+  filename: string;
+  output_path: string;
+  duration_seconds: number;
+  file_size_bytes: number;
+  data_rate_bps: number;
+}
+
+export interface StartRecordingRequest {
+  output_dir?: string;
+  filename?: string;
+}
 // Streaming client (engineer side)
 export interface StreamingClientStatus {
   state: "idle" | "connecting" | "connected" | "reconnecting";

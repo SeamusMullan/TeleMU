@@ -6,6 +6,7 @@ import GaugeWidget from "../components/dashboard/GaugeWidget";
 import SparkStrip from "../components/dashboard/SparkStrip";
 import StatusRow from "../components/dashboard/StatusRow";
 import LapInfo from "../components/dashboard/LapInfo";
+import RecordingControls from "../components/dashboard/RecordingControls";
 import StreamingPanel from "../components/dashboard/StreamingPanel";
 
 const GAUGES = [
@@ -51,6 +52,11 @@ export default function DashboardPage() {
       {/* Status indicators */}
       <div className="mb-4">
         <StatusRow status={status} />
+      </div>
+
+      {/* Recording controls */}
+      <div className="mb-4">
+        <RecordingControls />
       </div>
 
       {/* Gauges grid */}
