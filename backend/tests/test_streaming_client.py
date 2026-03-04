@@ -31,6 +31,7 @@ from telemu.streaming.protocol import (
     pack_subscribe,
     parse_udp_frame,
     parse_discovery,
+    encode_telemetry_frame,
 )
 from telemu.streaming.client import (
     STATE_CONNECTED,
@@ -49,7 +50,7 @@ def test_magic_constant():
 
 
 def test_protocol_version():
-    assert PROTOCOL_VERSION == 1
+    assert PROTOCOL_VERSION == 2
 
 
 def test_udp_header_size():
@@ -106,15 +107,16 @@ def test_pack_subscribe_all_channels():
     msg = pack_subscribe(8, subscribe_all=True)
     magic, length, msg_type = CTRL_HDR.unpack(msg[:CTRL_HDR_SIZE])
     assert msg_type == 0x12  # MSG_SUBSCRIBE
-    assert length == 1       # ceil(8/8) = 1 byte
-    assert msg[CTRL_HDR_SIZE] == 0xFF
+    # New format: udp_port(2) + count(2) + 8 channel_ids(2 each) = 20 bytes
+    assert length == 20
 
 
 def test_pack_subscribe_no_channels():
     msg = pack_subscribe(8, subscribe_all=False)
     magic, length, msg_type = CTRL_HDR.unpack(msg[:CTRL_HDR_SIZE])
     assert msg_type == 0x12
-    assert msg[CTRL_HDR_SIZE] == 0x00
+    # New format: udp_port(2) + count(2) = 4 bytes (no channel IDs)
+    assert length == 4
 
 
 # ── pack_pong ─────────────────────────────────────────────────────────────────
@@ -134,13 +136,8 @@ def test_pack_pong():
 
 
 def _make_udp_frame(seq: int, ts: float, channels: dict[int, float]) -> bytes:
-    """Build a valid UDP telemetry frame."""
-    ch_count = len(channels)
-    hdr = UDP_HDR_FMT.pack(MAGIC, 0, seq, ts, ch_count)
-    payload = b"".join(
-        UDP_CH_FMT.pack(ch_id, value) for ch_id, value in channels.items()
-    )
-    return hdr + payload
+    """Build a valid UDP telemetry frame using the protocol encoder."""
+    return encode_telemetry_frame(0, seq, ts, channels, compress=False)
 
 
 def test_parse_udp_frame_valid():
