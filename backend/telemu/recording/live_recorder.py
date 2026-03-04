@@ -69,6 +69,10 @@ class LiveRecorder:
         self._rate_window: deque[tuple[float, int]] = deque(maxlen=60)
         self._bytes_written: int = 0
         self._lock = asyncio.Lock()
+        # Lap splitting state
+        self._lap_markers: list[dict] = []
+        self._current_lap_num: int = -1
+        self._in_pits_during_lap: bool = False
 
     # ── Public API ──────────────────────────────────────────────────────────
 
@@ -97,6 +101,9 @@ class LiveRecorder:
             self._bytes_written = 0
             self._rate_window.clear()
             self._start_time = time.monotonic()
+            self._lap_markers = []
+            self._current_lap_num = -1
+            self._in_pits_during_lap = False
             self._active = True
             logger.info("LiveRecorder: started → %s", self._output_path)
 
@@ -111,10 +118,15 @@ class LiveRecorder:
             track = self._track
             car = self._car
             duration = time.monotonic() - self._start_time
+            # Finalize the last open lap marker
+            if self._lap_markers and self._lap_markers[-1].get("end_frame") is None:
+                self._lap_markers[-1]["end_frame"] = max(0, len(frames) - 1)
+                self._lap_markers[-1]["is_pit_in_lap"] = self._in_pits_during_lap
+            lap_markers = list(self._lap_markers)
 
         # Write outside the lock to avoid blocking incoming frames
         assert path is not None
-        await asyncio.to_thread(_write_tmu, path, track, car, frames)
+        await asyncio.to_thread(_write_tmu, path, track, car, frames, lap_markers)
         size = path.stat().st_size if path.exists() else 0
         logger.info(
             "LiveRecorder: saved %d frames (%.1f s) → %s",
@@ -138,6 +150,38 @@ class LiveRecorder:
         obj: dict = {"ts": frame.ts, "channels": frame.channels}
         if frame.lap_info:
             obj["lap_marker"] = frame.lap_info
+
+        # Lap boundary detection
+        lap_info = frame.lap_info
+        if lap_info and "lap" in lap_info:
+            lap_num = lap_info["lap"]
+            if lap_num != self._current_lap_num:
+                frame_idx = len(self._frames)
+                # Close the previous lap marker
+                if self._lap_markers:
+                    prev = self._lap_markers[-1]
+                    prev["end_frame"] = frame_idx - 1
+                    prev["is_pit_in_lap"] = self._in_pits_during_lap
+                    prev["lap_time"] = lap_info.get("last_time", "")
+                    prev["sector_times"] = list(lap_info.get("sectors", []))
+                # Open a new lap marker
+                is_pit_out = bool(lap_info.get("in_pits", frame.status.get("pit", False)))
+                self._lap_markers.append({
+                    "lap_number": lap_num,
+                    "start_frame": frame_idx,
+                    "end_frame": None,
+                    "lap_time": "",
+                    "sector_times": [],
+                    "is_pit_in_lap": False,
+                    "is_pit_out_lap": is_pit_out,
+                })
+                self._current_lap_num = lap_num
+                self._in_pits_during_lap = False
+
+        # Track pit visits within the current lap
+        if frame.status.get("pit", False):
+            self._in_pits_during_lap = True
+
         line = json.dumps(obj, separators=(",", ":")).encode()
         self._frames.append(line)
         self._bytes_written += len(line)
@@ -192,7 +236,7 @@ def _compute_rate(window: deque[tuple[float, int]]) -> float:
     return (newest_bytes - oldest_bytes) / dt
 
 
-def _write_tmu(path: Path, track: str, car: str, frames: list[bytes]) -> None:
+def _write_tmu(path: Path, track: str, car: str, frames: list[bytes], lap_markers: list[dict] | None = None) -> None:
     """Write buffered frames to disk using the NDJSON .tmu format."""
     import datetime
 
@@ -201,6 +245,7 @@ def _write_tmu(path: Path, track: str, car: str, frames: list[bytes]) -> None:
         "car": car,
         "date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "channels": [],
+        "lap_markers": lap_markers or [],
     }
     hdr_bytes = json.dumps(header, separators=(",", ":")).encode()
     payload = b"\n".join(frames)
