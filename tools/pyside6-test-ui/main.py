@@ -161,6 +161,7 @@ class LovenseTab(QWidget):
 
         buttons = QGridLayout()
         self.status_btn = QPushButton("Status")
+        self.detect_btn = QPushButton("Detect Local App")
         self.local_btn = QPushButton("Local Connect")
         self.uid_btn = QPushButton("Refresh UID")
         self.resolve_btn = QPushButton("Resolve LAN")
@@ -172,6 +173,7 @@ class LovenseTab(QWidget):
         self.clear_btn = QPushButton("Clear Output")
 
         self.status_btn.clicked.connect(self.status)
+        self.detect_btn.clicked.connect(self.detect_local_app)
         self.local_btn.clicked.connect(self.local_connect)
         self.uid_btn.clicked.connect(self.fetch_uid_from_oauth)
         self.resolve_btn.clicked.connect(self.resolve_lan)
@@ -190,13 +192,14 @@ class LovenseTab(QWidget):
         self.auto_connect_startup.stateChanged.connect(self.save_settings)
 
         buttons.addWidget(self.status_btn, 0, 0)
-        buttons.addWidget(self.local_btn, 0, 1)
-        buttons.addWidget(self.uid_btn, 0, 2)
-        buttons.addWidget(self.resolve_btn, 0, 3)
-        buttons.addWidget(self.connect_btn, 1, 0)
-        buttons.addWidget(self.auto_connect_btn, 1, 1)
-        buttons.addWidget(self.toys_btn, 1, 2)
-        buttons.addWidget(self.function_btn, 1, 3)
+        buttons.addWidget(self.detect_btn, 0, 1)
+        buttons.addWidget(self.local_btn, 0, 2)
+        buttons.addWidget(self.uid_btn, 0, 3)
+        buttons.addWidget(self.resolve_btn, 1, 0)
+        buttons.addWidget(self.connect_btn, 1, 1)
+        buttons.addWidget(self.auto_connect_btn, 1, 2)
+        buttons.addWidget(self.toys_btn, 1, 3)
+        buttons.addWidget(self.function_btn, 2, 1)
         buttons.addWidget(self.stop_btn, 2, 2)
         buttons.addWidget(self.clear_btn, 2, 3)
         layout.addLayout(buttons)
@@ -343,9 +346,51 @@ class LovenseTab(QWidget):
         self.save_settings()
         return self._looks_successful(status, payload)
 
+    def _extract_apps(self, payload):
+        if not isinstance(payload, dict):
+            return []
+        data = payload.get("data")
+        if isinstance(data, list):
+            return [x for x in data if isinstance(x, dict)]
+        if isinstance(data, dict):
+            return [data]
+        return []
+
+    def detect_local_app(self):
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.get("https://api.lovense-api.com/api/lan/v2/app")
+            payload = resp.json()
+        except Exception as exc:
+            self._log(f"Detect local app failed: {exc}")
+            return False
+
+        code = payload.get("code") if isinstance(payload, dict) else None
+        apps = self._extract_apps(payload)
+        if code not in (0, "0") or not apps:
+            self._log(f"Detect local app returned no usable app: {json.dumps(payload)}")
+            return False
+
+        app = next((a for a in apps if a.get("online") is True), apps[0])
+        domain = app.get("domain")
+        https_port = app.get("httpsPort")
+        if isinstance(domain, str) and domain.strip():
+            self.domain.setText(domain.strip())
+        if isinstance(https_port, int):
+            self.port.setValue(https_port)
+        elif isinstance(https_port, str) and https_port.isdigit():
+            self.port.setValue(int(https_port))
+        self.save_settings()
+        self._log(
+            f"Detected local app domain={self.domain.text().strip()} httpsPort={self.port.value()}"
+        )
+        return bool(self.domain.text().strip())
+
     def local_connect(self):
-        self.domain.setText("127-0-0-1.lovense.club")
-        self.port.setValue(30010)
+        if not self.detect_local_app():
+            self.domain.setText("127-0-0-1.lovense.club")
+            self.port.setValue(30010)
+            self._log("Falling back to localhost Lovense domain.")
         if not self.connect_lan():
             self._log("Local connect failed.")
             return False
