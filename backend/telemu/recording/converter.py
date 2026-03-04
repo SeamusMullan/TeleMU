@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 import duckdb
 
-from telemu.recording.tmu_format import TmuFrame, TmuHeader, iter_tmu
+from telemu.recording.tmu_ndjson import TmuFrame, TmuHeader, iter_tmu
 
 ProgressCallback = Callable[[int, int], None]  # (current, total)
 

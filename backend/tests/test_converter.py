@@ -6,7 +6,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from telemu.recording.tmu_format import TmuFrame, TmuHeader, read_tmu, write_tmu
+from telemu.recording.tmu_ndjson import TmuFrame, TmuHeader, read_tmu, write_tmu
 from telemu.recording.converter import convert_tmu_to_duckdb, batch_convert
 
 
