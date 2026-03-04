@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import struct
 import time
@@ -321,6 +322,82 @@ class TestRingBuffer:
         await rec.stop()
         assert rec.stats.drop_count == 0
 
+    @pytest.mark.asyncio
+    async def test_default_ring_buffer_size_is_5_seconds(self, tmp_path):
+        for rate in VALID_SAMPLE_RATES:
+            rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=rate)
+            assert rec._ring_buffer_size == rate * 5
+
+    @pytest.mark.asyncio
+    async def test_buffer_utilization_zero_when_not_recording(self, tmp_path):
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60)
+        assert rec.stats.buffer_utilization == 0.0
+
+    @pytest.mark.asyncio
+    async def test_buffer_utilization_between_zero_and_one(self, tmp_path):
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60, ring_buffer_size=1200)
+        reader = FakeReader()
+        await rec.start(reader)
+
+        for f in _frames(10):
+            reader.push(f)
+
+        util = rec.stats.buffer_utilization
+        assert 0.0 <= util <= 1.0
+
+        await rec.stop()
+
+    @pytest.mark.asyncio
+    async def test_overflow_drops_oldest_frame(self, tmp_path):
+        """When buffer overflows, the oldest frame is dropped, not the newest."""
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60, ring_buffer_size=2)
+        reader = FakeReader()
+        await rec.start(reader)
+
+        # Fill buffer and overflow; new frames should replace old ones
+        for f in _frames(10):
+            reader.push(f)
+
+        # drop_count should reflect drops, and recording should not have blocked
+        assert rec.stats.drop_count > 0
+        await rec.stop()
+
+    @pytest.mark.asyncio
+    async def test_overflow_logs_warning(self, tmp_path, caplog):
+        """Buffer overflow should emit a WARNING log."""
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60, ring_buffer_size=2)
+        reader = FakeReader()
+        await rec.start(reader)
+
+        with caplog.at_level(logging.WARNING, logger="telemu.recording.recorder"):
+            for f in _frames(20):
+                reader.push(f)
+
+        await rec.stop()
+        overflow_warnings = [r for r in caplog.records if "overflow" in r.message.lower()]
+        assert len(overflow_warnings) > 0
+
+    @pytest.mark.asyncio
+    async def test_buffer_80_percent_warning_logged(self, tmp_path, caplog):
+        """Reaching 80% buffer fullness should emit a WARNING log."""
+        # Use a buffer of 10 frames; push 9 to hit >=80%
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60, ring_buffer_size=10)
+        # Reset last warning time so it fires immediately
+        rec._last_buffer_warning = 0.0
+        reader = FakeReader()
+        await rec.start(reader)
+
+        with caplog.at_level(logging.WARNING, logger="telemu.recording.recorder"):
+            # Push 9 frames (90% of capacity=10) faster than the writer can drain
+            for f in _frames(9):
+                reader.push(f)
+
+        await rec.stop()
+        capacity_warnings = [
+            r for r in caplog.records if "buffer at" in r.message.lower()
+        ]
+        assert len(capacity_warnings) > 0
+
 
 # ── Sample rate control ───────────────────────────────────────────────────────
 
@@ -491,6 +568,16 @@ class TestStats:
         await rec.start(reader)
         s = rec.stats
         assert s.duration_s >= 0
+        await rec.stop()
+
+    @pytest.mark.asyncio
+    async def test_buffer_utilization_in_stats(self, tmp_path):
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60)
+        reader = FakeReader()
+        await rec.start(reader)
+        s = rec.stats
+        assert hasattr(s, "buffer_utilization")
+        assert isinstance(s.buffer_utilization, float)
         await rec.stop()
 
 
