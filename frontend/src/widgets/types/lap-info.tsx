@@ -1,11 +1,11 @@
 /** Lap info widget type — wraps LapInfo. */
 
-import { memo } from "react";
+import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import LapInfo from "../../components/dashboard/LapInfo";
 import { useTelemetryStore } from "../../stores/telemetryStore";
 
-const LapInfoWrapper = memo(function LapInfoWrapper(_props: WidgetProps) {
+const LapInfoWrapper = memo(function LapInfoWrapper() {
   const lapInfo = useTelemetryStore((s) => s.lapInfo);
   return <LapInfo lapInfo={lapInfo} />;
 });
@@ -20,5 +20,5 @@ registerWidget({
   minW: 2,
   minH: 3,
   configFields: [],
-  component: LapInfoWrapper,
+  component: LapInfoWrapper as React.ComponentType<WidgetProps>,
 });

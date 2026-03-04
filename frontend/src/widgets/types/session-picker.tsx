@@ -1,10 +1,10 @@
 /** Session picker widget type — wraps SessionPicker. */
 
-import { memo } from "react";
+import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import SessionPicker from "../../components/explorer/SessionPicker";
 
-const SessionPickerWrapper = memo(function SessionPickerWrapper(_props: WidgetProps) {
+const SessionPickerWrapper = memo(function SessionPickerWrapper() {
   return <SessionPicker />;
 });
 
@@ -18,5 +18,5 @@ registerWidget({
   minW: 2,
   minH: 2,
   configFields: [],
-  component: SessionPickerWrapper,
+  component: SessionPickerWrapper as React.ComponentType<WidgetProps>,
 });

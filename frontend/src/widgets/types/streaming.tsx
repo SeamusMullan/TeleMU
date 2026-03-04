@@ -1,10 +1,10 @@
 /** Streaming panel widget type — wraps StreamingPanel. */
 
-import { memo } from "react";
+import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import StreamingPanel from "../../components/dashboard/StreamingPanel";
 
-const StreamingWrapper = memo(function StreamingWrapper(_props: WidgetProps) {
+const StreamingWrapper = memo(function StreamingWrapper() {
   return <StreamingPanel />;
 });
 
@@ -18,5 +18,5 @@ registerWidget({
   minW: 2,
   minH: 3,
   configFields: [],
-  component: StreamingWrapper,
+  component: StreamingWrapper as React.ComponentType<WidgetProps>,
 });

@@ -1,6 +1,6 @@
 /** Schema browser — tree view of tables and their columns with type badges. */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useSessionStore } from "../../stores/sessionStore";
 import { api } from "../../api/rest";
 import type { ColumnInfo } from "../../api/types";
@@ -19,6 +19,14 @@ export default function SchemaBrowser() {
   const { tables, activeSession } = useSessionStore();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [schemas, setSchemas] = useState<Record<string, ColumnInfo[]>>({});
+  const [prevSession, setPrevSession] = useState(activeSession);
+
+  // Reset when session changes
+  if (prevSession !== activeSession) {
+    setPrevSession(activeSession);
+    if (expanded.size > 0) setExpanded(new Set());
+    if (Object.keys(schemas).length > 0) setSchemas({});
+  }
 
   const toggleTable = useCallback(
     async (tableName: string) => {
@@ -40,12 +48,6 @@ export default function SchemaBrowser() {
     },
     [expanded, schemas],
   );
-
-  // Reset when session changes
-  useEffect(() => {
-    setExpanded(new Set());
-    setSchemas({});
-  }, [activeSession]);
 
   if (!activeSession) {
     return (

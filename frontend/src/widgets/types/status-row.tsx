@@ -1,11 +1,11 @@
 /** Status row widget type — wraps StatusRow. */
 
-import { memo } from "react";
+import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import StatusRow from "../../components/dashboard/StatusRow";
 import { useTelemetryStore } from "../../stores/telemetryStore";
 
-const StatusRowWrapper = memo(function StatusRowWrapper(_props: WidgetProps) {
+const StatusRowWrapper = memo(function StatusRowWrapper() {
   const status = useTelemetryStore((s) => s.status);
   return <StatusRow status={status} />;
 });
@@ -20,5 +20,5 @@ registerWidget({
   minW: 4,
   minH: 2,
   configFields: [],
-  component: StatusRowWrapper,
+  component: StatusRowWrapper as React.ComponentType<WidgetProps>,
 });

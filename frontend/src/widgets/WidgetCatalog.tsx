@@ -1,5 +1,6 @@
 /** Widget catalog modal — shows all registered widgets for adding to a page. */
 
+import { useRef, useCallback } from "react";
 import { getAllWidgets } from "./registry";
 import { useLayoutStore } from "../stores/layoutStore";
 
@@ -11,12 +12,14 @@ interface WidgetCatalogProps {
 export default function WidgetCatalog({ pageId, onClose }: WidgetCatalogProps) {
   const addWidget = useLayoutStore((s) => s.addWidget);
   const widgets = getAllWidgets();
+  const counterRef = useRef(0);
 
-  const handleAdd = (type: string) => {
+  const handleAdd = useCallback((type: string) => {
     const def = widgets.find((w) => w.type === type);
     if (!def) return;
 
-    const id = `${type}_${Date.now()}`;
+    counterRef.current += 1;
+    const id = `${type}_${counterRef.current}_${performance.now().toFixed(0)}`;
     const config: Record<string, unknown> = {};
     for (const field of def.configFields) {
       if (field.default !== undefined) {
@@ -30,7 +33,7 @@ export default function WidgetCatalog({ pageId, onClose }: WidgetCatalogProps) {
       { i: id, x: 0, y: Infinity, w: def.defaultW, h: def.defaultH, minW: def.minW, minH: def.minH },
     );
     onClose();
-  };
+  }, [widgets, addWidget, pageId, onClose]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>

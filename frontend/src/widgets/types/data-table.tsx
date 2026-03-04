@@ -1,10 +1,10 @@
 /** Data table widget type — wraps DataTable. */
 
-import { memo } from "react";
+import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import DataTable from "../../components/explorer/DataTable";
 
-const DataTableWrapper = memo(function DataTableWrapper(_props: WidgetProps) {
+const DataTableWrapper = memo(function DataTableWrapper() {
   return <DataTable />;
 });
 
@@ -18,5 +18,5 @@ registerWidget({
   minW: 4,
   minH: 4,
   configFields: [],
-  component: DataTableWrapper,
+  component: DataTableWrapper as React.ComponentType<WidgetProps>,
 });

@@ -1,10 +1,10 @@
 /** Channel selector widget type — wraps ChannelSelector. */
 
-import { memo } from "react";
+import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import ChannelSelector from "../../components/analyzer/ChannelSelector";
 
-const ChannelSelectorWrapper = memo(function ChannelSelectorWrapper(_props: WidgetProps) {
+const ChannelSelectorWrapper = memo(function ChannelSelectorWrapper() {
   return <ChannelSelector />;
 });
 
@@ -18,5 +18,5 @@ registerWidget({
   minW: 2,
   minH: 4,
   configFields: [],
-  component: ChannelSelectorWrapper,
+  component: ChannelSelectorWrapper as React.ComponentType<WidgetProps>,
 });

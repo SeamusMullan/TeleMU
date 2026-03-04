@@ -1,10 +1,10 @@
 /** Schema browser widget type — wraps SchemaBrowser. */
 
-import { memo } from "react";
+import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import SchemaBrowser from "../../components/explorer/SchemaBrowser";
 
-const SchemaBrowserWrapper = memo(function SchemaBrowserWrapper(_props: WidgetProps) {
+const SchemaBrowserWrapper = memo(function SchemaBrowserWrapper() {
   return <SchemaBrowser />;
 });
 
@@ -18,5 +18,5 @@ registerWidget({
   minW: 2,
   minH: 4,
   configFields: [],
-  component: SchemaBrowserWrapper,
+  component: SchemaBrowserWrapper as React.ComponentType<WidgetProps>,
 });

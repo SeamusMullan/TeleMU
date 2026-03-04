@@ -1,10 +1,10 @@
 /** SQL query widget type — wraps SqlQuery. */
 
-import { memo } from "react";
+import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import SqlQuery from "../../components/explorer/SqlQuery";
 
-const SqlQueryWrapper = memo(function SqlQueryWrapper(_props: WidgetProps) {
+const SqlQueryWrapper = memo(function SqlQueryWrapper() {
   return <SqlQuery />;
 });
 
@@ -18,5 +18,5 @@ registerWidget({
   minW: 4,
   minH: 3,
   configFields: [],
-  component: SqlQueryWrapper,
+  component: SqlQueryWrapper as React.ComponentType<WidgetProps>,
 });

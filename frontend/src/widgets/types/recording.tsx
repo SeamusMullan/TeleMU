@@ -1,10 +1,10 @@
 /** Recording widget type — wraps RecordingControls. */
 
-import { memo } from "react";
+import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import RecordingControls from "../../components/dashboard/RecordingControls";
 
-const RecordingWrapper = memo(function RecordingWrapper(_props: WidgetProps) {
+const RecordingWrapper = memo(function RecordingWrapper() {
   return <RecordingControls />;
 });
 
@@ -18,5 +18,5 @@ registerWidget({
   minW: 3,
   minH: 2,
   configFields: [],
-  component: RecordingWrapper,
+  component: RecordingWrapper as React.ComponentType<WidgetProps>,
 });
