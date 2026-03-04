@@ -10,6 +10,7 @@ import type {
   TmuFileInfo,
   ConvertRequest,
   ConvertResponse,
+  StreamingStatus,
 } from "./types";
 
 const BASE = "/api";
@@ -51,4 +52,7 @@ export const api = {
   query: (sql: string) => post<QueryResult>("/query", { sql }),
   tmuFiles: () => get<TmuFileInfo[]>("/convert/tmu-files"),
   convert: (req: ConvertRequest) => post<ConvertResponse>("/convert", req),
+  streamingStatus: () => get<StreamingStatus>("/streaming/status"),
+  streamingStart: () => post<StreamingStatus>("/streaming/start", {}),
+  streamingStop: () => post<StreamingStatus>("/streaming/stop", {}),
 };

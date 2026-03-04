@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     lovense_verify_tls: bool = False
     lovense_timeout_sec: float = 5.0
 
+    # Streaming server (driver side)
+    streaming_host: str = ""  # empty = all interfaces
+    streaming_discovery_port: int = 19740
+    streaming_telemetry_port: int = 19741
+    streaming_control_port: int = 19742
+    streaming_driver_name: str = ""  # empty = system hostname
+
     # CORS (for development; Electron doesn't need this)
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
