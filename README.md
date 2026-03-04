@@ -1,10 +1,18 @@
 # TeleMU
 
+[![Release](https://img.shields.io/github/v/release/SeamusMullan/TeleMU?label=release)](https://github.com/SeamusMullan/TeleMU/releases/latest)
+[![CI](https://github.com/SeamusMullan/TeleMU/actions/workflows/ci.yml/badge.svg)](https://github.com/SeamusMullan/TeleMU/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/SeamusMullan/TeleMU)](LICENSE)
+
 **Telemetry Analysis Platform for Le Mans Ultimate**
 
 TeleMU is a telemetry analysis platform for [Le Mans Ultimate](https://www.lemansvirtual.com/). It reads live telemetry from LMU's shared memory, provides real-time dashboards, records sessions, analyses post-session data via DuckDB, and streams telemetry to a remote race engineer over LAN.
 
 > **v2 Rewrite** — The original PySide6 desktop app is archived on the `v1-archive` branch. v2 uses a Python/FastAPI backend + React/TypeScript/Electron frontend.
+
+## Installation (Windows — pre-built)
+
+Download the latest `telemu.exe` from the [Releases page](https://github.com/SeamusMullan/TeleMU/releases/latest) and run it directly — no Python installation required.
 
 ## Tech Stack
 
