@@ -1,7 +1,5 @@
 import json
-import os
 import sys
-import uuid
 from datetime import datetime
 
 import httpx
@@ -123,6 +121,7 @@ class LovenseTab(QWidget):
         form = QGridLayout()
         self.token = QLineEdit(str(self.settings.value("lovense/token", "")))
         self.uid = QLineEdit(str(self.settings.value("lovense/uid", "")))
+        self.auth_code = QLineEdit(str(self.settings.value("lovense/auth_code", "")))
         self.domain = QLineEdit(str(self.settings.value("lovense/domain", "")))
         self.port = QSpinBox()
         self.port.setRange(1, 65535)
@@ -141,22 +140,24 @@ class LovenseTab(QWidget):
         form.addWidget(self.token, 0, 1)
         form.addWidget(QLabel("UID"), 0, 2)
         form.addWidget(self.uid, 0, 3)
-        form.addWidget(QLabel("Domain"), 1, 0)
-        form.addWidget(self.domain, 1, 1)
-        form.addWidget(QLabel("HTTPS Port"), 1, 2)
-        form.addWidget(self.port, 1, 3)
-        form.addWidget(QLabel("Action"), 2, 0)
-        form.addWidget(self.action, 2, 1)
-        form.addWidget(QLabel("Time Sec"), 2, 2)
-        form.addWidget(self.time_sec, 2, 3)
-        form.addWidget(QLabel("Toy"), 3, 0)
-        form.addWidget(self.toy, 3, 1)
-        form.addWidget(self.auto_connect_startup, 3, 2, 1, 2)
+        form.addWidget(QLabel("Auth Code"), 1, 0)
+        form.addWidget(self.auth_code, 1, 1, 1, 3)
+        form.addWidget(QLabel("Domain"), 2, 0)
+        form.addWidget(self.domain, 2, 1)
+        form.addWidget(QLabel("HTTPS Port"), 2, 2)
+        form.addWidget(self.port, 2, 3)
+        form.addWidget(QLabel("Action"), 3, 0)
+        form.addWidget(self.action, 3, 1)
+        form.addWidget(QLabel("Time Sec"), 3, 2)
+        form.addWidget(self.time_sec, 3, 3)
+        form.addWidget(QLabel("Toy"), 4, 0)
+        form.addWidget(self.toy, 4, 1)
+        form.addWidget(self.auto_connect_startup, 4, 2, 1, 2)
         layout.addLayout(form)
 
         buttons = QGridLayout()
         self.status_btn = QPushButton("Status")
-        self.uid_btn = QPushButton("Auto UID")
+        self.uid_btn = QPushButton("Get UID (OAuth)")
         self.resolve_btn = QPushButton("Resolve LAN")
         self.connect_btn = QPushButton("Connect")
         self.auto_connect_btn = QPushButton("Auto Connect")
@@ -166,7 +167,7 @@ class LovenseTab(QWidget):
         self.clear_btn = QPushButton("Clear Output")
 
         self.status_btn.clicked.connect(self.status)
-        self.uid_btn.clicked.connect(self.ensure_uid)
+        self.uid_btn.clicked.connect(self.fetch_uid_from_oauth)
         self.resolve_btn.clicked.connect(self.resolve_lan)
         self.connect_btn.clicked.connect(self.connect_lan)
         self.auto_connect_btn.clicked.connect(self.auto_connect)
@@ -176,6 +177,7 @@ class LovenseTab(QWidget):
         self.clear_btn.clicked.connect(lambda: self.output.clear())
         self.token.editingFinished.connect(self.save_settings)
         self.uid.editingFinished.connect(self.save_settings)
+        self.auth_code.editingFinished.connect(self.save_settings)
         self.domain.editingFinished.connect(self.save_settings)
         self.port.valueChanged.connect(self.save_settings)
         self.auto_connect_startup.stateChanged.connect(self.save_settings)
@@ -196,7 +198,6 @@ class LovenseTab(QWidget):
         layout.addWidget(self.output)
 
         self.setLayout(layout)
-        self.ensure_uid()
 
     def _log(self, text):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -205,6 +206,7 @@ class LovenseTab(QWidget):
     def save_settings(self):
         self.settings.setValue("lovense/token", self.token.text().strip())
         self.settings.setValue("lovense/uid", self.uid.text().strip())
+        self.settings.setValue("lovense/auth_code", self.auth_code.text().strip())
         self.settings.setValue("lovense/domain", self.domain.text().strip())
         self.settings.setValue("lovense/https_port", self.port.value())
         self.settings.setValue(
@@ -212,16 +214,36 @@ class LovenseTab(QWidget):
             "true" if self.auto_connect_startup.isChecked() else "false",
         )
 
-    def ensure_uid(self):
-        current = self.uid.text().strip()
-        if current:
-            return current
-        seed = f"{os.environ.get('COMPUTERNAME', '')}:{os.environ.get('USERNAME', '')}"
-        generated = f"telemu-{uuid.uuid5(uuid.NAMESPACE_DNS, seed).hex[:16]}"
-        self.uid.setText(generated)
-        self.save_settings()
-        self._log(f"Generated UID: {generated}")
-        return generated
+    def fetch_uid_from_oauth(self):
+        token = self.token.text().strip()
+        auth_code = self.auth_code.text().strip()
+        if not token or not auth_code:
+            QMessageBox.warning(self, "Missing data", "Token and Auth Code are required.")
+            return
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.post(
+                    "https://appgallery.lovense.com/remote-dev-api/oauth",
+                    json={"token": token, "code": auth_code},
+                )
+            payload = resp.json()
+        except Exception as exc:
+            self._log(f"Get UID (OAuth) failed: {exc}")
+            return
+        user_id = None
+        if isinstance(payload, dict):
+            data = payload.get("data")
+            if isinstance(data, dict):
+                if isinstance(data.get("userId"), str):
+                    user_id = data["userId"].strip()
+                elif isinstance(data.get("uid"), str):
+                    user_id = data["uid"].strip()
+        if user_id:
+            self.uid.setText(user_id)
+            self.save_settings()
+            self._log(f"Resolved UID: {user_id}")
+            return
+        self._log(f"Get UID (OAuth) did not return userId. Response: {json.dumps(payload)}")
 
     def _parse_sender_response(self, response_text):
         try:
@@ -261,7 +283,7 @@ class LovenseTab(QWidget):
 
     def resolve_lan(self):
         token = self.token.text().strip()
-        uid = self.ensure_uid()
+        uid = self.uid.text().strip()
         if not token or not uid:
             QMessageBox.warning(self, "Missing data", "Token and UID are required.")
             return
@@ -294,6 +316,8 @@ class LovenseTab(QWidget):
         return status is not None and status < 400
 
     def auto_connect(self):
+        if not self.uid.text().strip() and self.token.text().strip() and self.auth_code.text().strip():
+            self.fetch_uid_from_oauth()
         has_domain = bool(self.domain.text().strip())
         if not has_domain:
             has_domain = self.resolve_lan()
