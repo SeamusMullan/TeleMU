@@ -55,6 +55,11 @@ docs/site/
 *.tar.zst
 *.whl
 
+# Worktrees
+worktrees/
+.worktrees/
+.claude/worktrees/
+
 # Environment
 .env
 .env.local

@@ -34,10 +34,14 @@ nav:
       - Data Structures: shared-memory/data-structures.md
   - Recording:
       - Overview: recording/overview.md
+      - File Format Spec: recording/format-spec.md
       - Playback & Conversion: recording/playback.md
   - Streaming:
       - Overview: streaming/overview.md
       - Protocol Spec: streaming/protocol.md
+  - External API:
+      - Overview: external-api/overview.md
+      - Lovense Integration: external-api/lovense.md
   - Race Engineer:
       - Overview: race-engineer/overview.md
       - Tool Specs: race-engineer/tools.md
