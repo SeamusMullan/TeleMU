@@ -4,12 +4,15 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - "**"
 
 permissions:
   contents: write
 
 jobs:
   backend-test:
+    if: startsWith(github.ref, 'refs/tags/v') || contains(github.event.head_commit.message, '[build-all]')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -92,13 +95,16 @@ jobs:
         run: npx electron-builder --win --dir
 
       # -- Inno Setup installer --
-      - name: Extract version from tag
+      - name: Extract version
         id: version
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.0.0-dev.${GITHUB_SHA::7}"
+          fi
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "TAG=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Build installer with Inno Setup
         run: >
@@ -120,6 +126,7 @@ jobs:
           path: backend/dist/telemu.exe
 
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
     steps:
