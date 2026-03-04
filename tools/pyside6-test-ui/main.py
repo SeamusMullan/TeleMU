@@ -1,5 +1,7 @@
 import json
+import os
 import sys
+import uuid
 from datetime import datetime
 
 import httpx
@@ -81,6 +83,7 @@ class ApiExplorerTab(QWidget):
         layout.addWidget(self.output)
 
         self.setLayout(layout)
+        self.ensure_uid()
         self.load_preset()
 
     def load_preset(self):
@@ -154,6 +157,7 @@ class LovenseTab(QWidget):
 
         buttons = QGridLayout()
         self.status_btn = QPushButton("Status")
+        self.uid_btn = QPushButton("Auto UID")
         self.resolve_btn = QPushButton("Resolve LAN")
         self.connect_btn = QPushButton("Connect")
         self.auto_connect_btn = QPushButton("Auto Connect")
@@ -163,6 +167,7 @@ class LovenseTab(QWidget):
         self.clear_btn = QPushButton("Clear Output")
 
         self.status_btn.clicked.connect(self.status)
+        self.uid_btn.clicked.connect(self.ensure_uid)
         self.resolve_btn.clicked.connect(self.resolve_lan)
         self.connect_btn.clicked.connect(self.connect_lan)
         self.auto_connect_btn.clicked.connect(self.auto_connect)
@@ -177,13 +182,14 @@ class LovenseTab(QWidget):
         self.auto_connect_startup.stateChanged.connect(self.save_settings)
 
         buttons.addWidget(self.status_btn, 0, 0)
-        buttons.addWidget(self.resolve_btn, 0, 1)
-        buttons.addWidget(self.connect_btn, 0, 2)
-        buttons.addWidget(self.auto_connect_btn, 0, 3)
-        buttons.addWidget(self.toys_btn, 1, 0)
-        buttons.addWidget(self.function_btn, 1, 1)
-        buttons.addWidget(self.stop_btn, 1, 2)
-        buttons.addWidget(self.clear_btn, 1, 3)
+        buttons.addWidget(self.uid_btn, 0, 1)
+        buttons.addWidget(self.resolve_btn, 0, 2)
+        buttons.addWidget(self.connect_btn, 0, 3)
+        buttons.addWidget(self.auto_connect_btn, 1, 0)
+        buttons.addWidget(self.toys_btn, 1, 1)
+        buttons.addWidget(self.function_btn, 1, 2)
+        buttons.addWidget(self.stop_btn, 1, 3)
+        buttons.addWidget(self.clear_btn, 2, 3)
         layout.addLayout(buttons)
 
         self.output = QPlainTextEdit()
@@ -205,6 +211,17 @@ class LovenseTab(QWidget):
             "lovense/auto_connect_startup",
             "true" if self.auto_connect_startup.isChecked() else "false",
         )
+
+    def ensure_uid(self):
+        current = self.uid.text().strip()
+        if current:
+            return current
+        seed = f"{os.environ.get('COMPUTERNAME', '')}:{os.environ.get('USERNAME', '')}"
+        generated = f"telemu-{uuid.uuid5(uuid.NAMESPACE_DNS, seed).hex[:16]}"
+        self.uid.setText(generated)
+        self.save_settings()
+        self._log(f"Generated UID: {generated}")
+        return generated
 
     def _parse_sender_response(self, response_text):
         try:
@@ -244,7 +261,7 @@ class LovenseTab(QWidget):
 
     def resolve_lan(self):
         token = self.token.text().strip()
-        uid = self.uid.text().strip()
+        uid = self.ensure_uid()
         if not token or not uid:
             QMessageBox.warning(self, "Missing data", "Token and UID are required.")
             return
