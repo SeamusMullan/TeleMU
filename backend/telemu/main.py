@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from telemu import __version__
 from telemu.config import settings
+from telemu.lovense import LovenseClient
 from telemu.reader import DemoReader, TelemetryFrame, TelemetryReader
 from telemu.ws.manager import ConnectionManager
 from telemu.ws.router import manager as ws_manager
@@ -53,6 +54,13 @@ async def lifespan(app: FastAPI):
     app.state.reader = reader
     app.state.ws_manager = ws_manager
     app.state.db_conn = None
+    if not hasattr(app.state, "lovense"):
+        app.state.lovense = LovenseClient(
+            verify_tls=settings.lovense_verify_tls,
+            timeout_sec=settings.lovense_timeout_sec,
+        )
+        if settings.lovense_domain:
+            app.state.lovense.configure(settings.lovense_domain, settings.lovense_https_port)
 
     reader.subscribe(lambda frame: _schedule_broadcast(app, frame))
     await reader.start()
@@ -87,6 +95,12 @@ def create_app() -> FastAPI:
         version=__version__,
         lifespan=lifespan,
     )
+    app.state.lovense = LovenseClient(
+        verify_tls=settings.lovense_verify_tls,
+        timeout_sec=settings.lovense_timeout_sec,
+    )
+    if settings.lovense_domain:
+        app.state.lovense.configure(settings.lovense_domain, settings.lovense_https_port)
 
     # CORS
     app.add_middleware(
@@ -104,6 +118,8 @@ def create_app() -> FastAPI:
     from telemu.api.query import router as query_router
     from telemu.api.export import router as export_router
     from telemu.api.convert import router as convert_router
+    from telemu.api.recordings import router as recordings_router
+    from telemu.api.lovense import router as lovense_router
 
     app.include_router(health_router, prefix="/api")
     app.include_router(sessions_router, prefix="/api")
@@ -111,6 +127,8 @@ def create_app() -> FastAPI:
     app.include_router(query_router, prefix="/api")
     app.include_router(export_router, prefix="/api")
     app.include_router(convert_router, prefix="/api")
+    app.include_router(recordings_router, prefix="/api")
+    app.include_router(lovense_router, prefix="/api")
     app.include_router(ws_router)
 
     return app

@@ -104,6 +104,38 @@ Each frame is independently zstd-compressed:
 - **zstd**: fast compression/decompression, good ratio for telemetry data
 - **Player-only**: records only the player's vehicle data (not all 104 vehicles) to keep file sizes small
 
+## Integrity Verification
+
+The `.tmu` format includes a CRC-32 checksum in the footer covering all bytes before the footer. This enables detection of corruption from disk errors, incomplete writes, or other data integrity issues.
+
+### Verification on Open
+
+```python
+from telemu.recording import verify_file
+
+result = verify_file("session.tmu")
+# result.ok, result.crc32_ok, result.header_ok, result.frame_count
+```
+
+### Repair Mode
+
+Corrupted files can be repaired by recovering valid frames:
+
+```python
+from telemu.recording import repair_file
+
+recovered, skipped = repair_file("corrupt.tmu", "repaired.tmu")
+```
+
+### CLI Verification
+
+```bash
+telemu-verify session.tmu
+telemu-verify --repair session.tmu --output repaired.tmu
+```
+
+See [File Format Spec](format-spec.md) for the complete binary format specification.
+
 ## Data Flow
 
 ```mermaid
