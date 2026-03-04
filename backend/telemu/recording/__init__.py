@@ -2,6 +2,7 @@
 
 from telemu.recording.channels import ALL_CHANNELS, DEFAULT_CHANNELS
 from telemu.recording.channels import ChannelDef as SerializerChannelDef
+from telemu.recording.recorder import RECORDER_MAGIC, VALID_SAMPLE_RATES, RecordingStats, TelemetryRecorder, read_recorder_file
 from telemu.recording.serializer import FrameSerializer
 from telemu.recording.tmu_format import (
     CHANNEL_DEF_SIZE,
@@ -37,15 +38,20 @@ __all__ = [
     "FrameSerializer",
     "HEADER_FIXED_SIZE",
     "MAGIC",
+    "RECORDER_MAGIC",
+    "RecordingStats",
     "SerializerChannelDef",
+    "TelemetryRecorder",
     "TMUCorruptionError",
     "TMUFooter",
     "TMUHeader",
+    "VALID_SAMPLE_RATES",
     "VerifyResult",
     "build_minimal_tmu",
     "compute_channel_offsets",
     "frame_payload_size",
     "pack_frame",
+    "read_recorder_file",
     "repair_file",
     "repair_tmu",
     "unpack_frame",
