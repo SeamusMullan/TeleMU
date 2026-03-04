@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 telemu = "telemu.main:cli"
+telemu-verify = "telemu.recording.verify:main"
 
 [dependency-groups]
 dev = [
