@@ -227,6 +227,99 @@ def test_build_minimal_tmu_is_valid():
         assert "speed" in vals
 
 
+# ── Edge case: empty recording ───────────────────────────────────────────────
+
+
+def test_empty_recording_valid():
+    """A .tmu file with zero frames should still be valid and parseable."""
+    channels = [
+        ChannelDef("speed", ChannelType.FLOAT64, "km/h", 0),
+        ChannelDef("rpm", ChannelType.FLOAT64, "rpm", 8),
+    ]
+    compute_channel_offsets(channels)
+    data = build_minimal_tmu(channels=channels, frames=[])
+
+    assert data[:4] == MAGIC
+
+    footer = TMUFooter.unpack(data[-FOOTER_SIZE:])
+    assert footer.frame_count == 0
+
+    result = verify_tmu(data)
+    assert result.ok is True
+    assert result.frame_count == 0
+
+
+# ── Edge case: single frame ───────────────────────────────────────────────────
+
+
+def test_single_frame_roundtrip():
+    """A .tmu file with exactly one frame should round-trip correctly."""
+    channels = [
+        ChannelDef("speed", ChannelType.FLOAT64, "km/h", 0),
+        ChannelDef("gear", ChannelType.INT32, "", 8),
+    ]
+    compute_channel_offsets(channels)
+    frames = [(42.0, [(ChannelType.FLOAT64, 199.9), (ChannelType.INT32, 6)])]
+    data = build_minimal_tmu(channels=channels, frames=frames)
+
+    result = verify_tmu(data)
+    assert result.ok is True
+    assert result.frame_count == 1
+
+    footer = TMUFooter.unpack(data[-FOOTER_SIZE:])
+    hdr = TMUHeader.unpack(data)
+    (frame_offset,) = struct.unpack(
+        "<Q", data[footer.index_offset : footer.index_offset + 8]
+    )
+    fsize = frame_payload_size(channels)
+    ts, vals = unpack_frame(data[frame_offset : frame_offset + fsize], channels)
+    assert ts == pytest.approx(42.0)
+    assert vals["speed"] == pytest.approx(199.9)
+    assert vals["gear"] == 6
+
+
+# ── Edge case: max channel types ─────────────────────────────────────────────
+
+
+def test_all_channel_types_roundtrip():
+    """A frame with one channel of each ChannelType should round-trip correctly."""
+    channels = [
+        ChannelDef("f64", ChannelType.FLOAT64, "unit", 0),
+        ChannelDef("f32", ChannelType.FLOAT32, "unit", 0),
+        ChannelDef("i32", ChannelType.INT32, "unit", 0),
+        ChannelDef("u16", ChannelType.UINT16, "unit", 0),
+        ChannelDef("boo", ChannelType.BOOL, "unit", 0),
+    ]
+    compute_channel_offsets(channels)
+
+    values = [
+        (ChannelType.FLOAT64, 1.23456789),
+        (ChannelType.FLOAT32, 2.5),
+        (ChannelType.INT32, -42),
+        (ChannelType.UINT16, 65535),
+        (ChannelType.BOOL, True),
+    ]
+    frames = [(0.016, values)]
+    data = build_minimal_tmu(channels=channels, frames=frames)
+
+    result = verify_tmu(data)
+    assert result.ok is True
+    assert result.frame_count == 1
+
+    footer = TMUFooter.unpack(data[-FOOTER_SIZE:])
+    (frame_offset,) = struct.unpack(
+        "<Q", data[footer.index_offset : footer.index_offset + 8]
+    )
+    fsize = frame_payload_size(channels)
+    ts, vals = unpack_frame(data[frame_offset : frame_offset + fsize], channels)
+    assert ts == pytest.approx(0.016)
+    assert vals["f64"] == pytest.approx(1.23456789)
+    assert vals["f32"] == pytest.approx(2.5, abs=1e-5)
+    assert vals["i32"] == -42
+    assert vals["u16"] == 65535
+    assert vals["boo"] is True
+
+
 # ── Integrity verification tests ─────────────────────────────────────────────
 
 

@@ -36,7 +36,7 @@ import json
 import logging
 import struct
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -55,6 +55,25 @@ VALID_SAMPLE_RATES: frozenset[int] = frozenset({10, 20, 30, 60})
 # How often (seconds) to emit a stats_updated signal during recording
 _STATS_INTERVAL_S = 1.0
 
+# Buffer fullness threshold at which a warning is logged
+_BUFFER_WARN_THRESHOLD = 0.80
+
+# Minimum seconds between repeated buffer-full warnings to avoid log spam
+_BUFFER_WARN_INTERVAL_S = 5.0
+
+
+@dataclass
+class LapMarker:
+    """Lap boundary information embedded in a recording."""
+
+    lap_number: int
+    start_frame: int
+    end_frame: int | None = None  # None until lap ends or recording stops
+    lap_time: str = ""  # formatted total lap time (from scoring data at lap boundary)
+    sector_times: list[str] = field(default_factory=list)
+    is_pit_in_lap: bool = False  # car visited pits during this lap
+    is_pit_out_lap: bool = False  # lap started from the pit exit
+
 
 @dataclass
 class RecordingStats:
@@ -64,6 +83,8 @@ class RecordingStats:
     bytes_written: int = 0
     duration_s: float = 0.0
     drop_count: int = 0
+    buffer_utilization: float = 0.0
+    lap_count: int = 0
 
 
 class TelemetryRecorder:
@@ -78,7 +99,8 @@ class TelemetryRecorder:
         Recording rate in Hz.  Must be one of ``{10, 20, 30, 60}``.
     ring_buffer_size:
         Maximum number of frames buffered between the reader callback and the
-        disk-writer task.  Frames are silently dropped when the buffer is full.
+        disk-writer task.  Defaults to 5 seconds of data (``sample_rate * 5``).
+        Frames are silently dropped when the buffer is full.
     channels:
         Ordered list of channel names to record.  ``None`` records every
         channel present in the first frame received.
@@ -91,7 +113,7 @@ class TelemetryRecorder:
         self,
         output_dir: Path | str = "recordings",
         sample_rate: int = 60,
-        ring_buffer_size: int = 1200,
+        ring_buffer_size: int | None = None,
         channels: list[str] | None = None,
         chunk_frames: int | None = None,
     ) -> None:
@@ -102,7 +124,7 @@ class TelemetryRecorder:
 
         self._output_dir = Path(output_dir)
         self._sample_rate = sample_rate
-        self._ring_buffer_size = ring_buffer_size
+        self._ring_buffer_size = ring_buffer_size if ring_buffer_size is not None else sample_rate * 5
         self._channels = channels
         self._chunk_frames = chunk_frames if chunk_frames is not None else sample_rate
 
@@ -115,6 +137,8 @@ class TelemetryRecorder:
         self._current_file: Path | None = None
         self._stats = RecordingStats()
         self._start_mono: float = 0.0
+        self._last_buffer_warning: float = 0.0
+        self._lap_markers: list[LapMarker] = []
 
         # Signal callbacks
         self._on_started: list[Callable[[Path], Any]] = []
@@ -160,16 +184,28 @@ class TelemetryRecorder:
         return self._current_file
 
     @property
+    def lap_markers(self) -> list[LapMarker]:
+        """List of lap markers detected so far (read-only snapshot)."""
+        return list(self._lap_markers)
+
+    @property
     def stats(self) -> RecordingStats:
         """Live copy of recording statistics."""
         duration = (
             time.monotonic() - self._start_mono if self._recording else self._stats.duration_s
+        )
+        utilization = (
+            self._queue.qsize() / self._ring_buffer_size
+            if self._queue is not None and self._ring_buffer_size > 0
+            else 0.0
         )
         return RecordingStats(
             frames_written=self._stats.frames_written,
             bytes_written=self._stats.bytes_written,
             duration_s=duration,
             drop_count=self._stats.drop_count,
+            buffer_utilization=utilization,
+            lap_count=len(self._lap_markers),
         )
 
     # ── Control API ───────────────────────────────────────────────────────────
@@ -206,6 +242,7 @@ class TelemetryRecorder:
         self._start_mono = time.monotonic()
         self._recording = True
         self._paused = False
+        self._lap_markers = []
 
         self._reader = reader
         reader.subscribe(self._on_frame)
@@ -273,10 +310,50 @@ class TelemetryRecorder:
         """Synchronous callback from TelemetryReader; enqueues onto the ring buffer."""
         if not self._recording or self._paused or self._queue is None:
             return
+
+        # 80% fullness warning (throttled)
+        qsize = self._queue.qsize()
+        if qsize >= self._ring_buffer_size * _BUFFER_WARN_THRESHOLD:
+            now = time.monotonic()
+            if now - self._last_buffer_warning >= _BUFFER_WARN_INTERVAL_S:
+                logger.warning(
+                    "Recording buffer at %.0f%% capacity (%d/%d frames)",
+                    qsize / self._ring_buffer_size * 100,
+                    qsize,
+                    self._ring_buffer_size,
+                )
+                self._last_buffer_warning = now
+
         try:
             self._queue.put_nowait(frame)
         except asyncio.QueueFull:
+            # Drop the oldest frame to make room, then enqueue the new one.
+            # In single-threaded asyncio, no other coroutine runs between these
+            # non-awaiting calls, so get_nowait/put_nowait should not fail.
+            try:
+                self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                # Unexpected in single-threaded asyncio; count as a drop and bail.
+                self._stats.drop_count += 1
+                logger.warning(
+                    "Recording buffer overflow: queue empty on drain (total dropped: %d)",
+                    self._stats.drop_count,
+                )
+                return
             self._stats.drop_count += 1
+            logger.warning(
+                "Recording buffer overflow: dropped oldest frame (total dropped: %d)",
+                self._stats.drop_count,
+            )
+            try:
+                self._queue.put_nowait(frame)
+            except asyncio.QueueFull:
+                # Still full after draining one slot (should not happen in practice).
+                self._stats.drop_count += 1
+                logger.warning(
+                    "Recording buffer overflow: new frame also lost (total dropped: %d)",
+                    self._stats.drop_count,
+                )
 
     async def _writer_loop(
         self,
@@ -295,6 +372,11 @@ class TelemetryRecorder:
         compressor: StreamCompressor | None = None
         channel_names: list[str] = []
         fmt = ""
+
+        # Lap-splitting state
+        frame_index: int = 0
+        current_lap_num: int = -1
+        in_pits_during_lap: bool = False
 
         try:
             # Block until the first frame arrives (or stop sentinel)
@@ -317,6 +399,21 @@ class TelemetryRecorder:
             self._stats.frames_written += 1
             last_ts = first_frame.ts
 
+            # Check first frame for an initial lap marker
+            if first_frame.lap_info and "lap" in first_frame.lap_info:
+                current_lap_num = first_frame.lap_info["lap"]
+                is_pit_out = bool(first_frame.lap_info.get("in_pits", first_frame.status.get("pit", False)))
+                self._lap_markers.append(
+                    LapMarker(
+                        lap_number=current_lap_num,
+                        start_frame=frame_index,
+                        is_pit_out_lap=is_pit_out,
+                    )
+                )
+            if first_frame.status.get("pit", False):
+                in_pits_during_lap = True
+            frame_index += 1
+
             while True:
                 try:
                     frame = await asyncio.wait_for(self._queue.get(), timeout=5.0)
@@ -335,17 +432,67 @@ class TelemetryRecorder:
                 if frame.ts - last_ts < interval * 0.9:
                     continue
 
+                # Lap boundary detection
+                if frame.lap_info and "lap" in frame.lap_info:
+                    lap_num = frame.lap_info["lap"]
+                    if lap_num != current_lap_num:
+                        # Close the previous lap marker
+                        if self._lap_markers:
+                            prev = self._lap_markers[-1]
+                            prev.end_frame = frame_index - 1
+                            prev.is_pit_in_lap = in_pits_during_lap
+                            # sector times and lap_time belong to the completed lap
+                            prev.lap_time = frame.lap_info.get("last_time", "")
+                            prev.sector_times = list(frame.lap_info.get("sectors", []))
+                        # Open a new lap marker
+                        is_pit_out = bool(
+                            frame.lap_info.get("in_pits", frame.status.get("pit", False))
+                        )
+                        self._lap_markers.append(
+                            LapMarker(
+                                lap_number=lap_num,
+                                start_frame=frame_index,
+                                is_pit_out_lap=is_pit_out,
+                            )
+                        )
+                        current_lap_num = lap_num
+                        in_pits_during_lap = False
+
+                # Track pit visits within the current lap
+                if frame.status.get("pit", False):
+                    in_pits_during_lap = True
+
                 raw = _pack_frame(fmt, channel_names, frame)
                 compressor.write_frame(raw)
                 self._stats.frames_written += 1
                 last_ts = frame.ts
+                frame_index += 1
 
                 now = time.monotonic()
                 if now - last_stats_mono >= _STATS_INTERVAL_S:
                     self._emit_stats()
                     last_stats_mono = now
 
+            # Finalize the last open lap marker
+            if self._lap_markers and self._lap_markers[-1].end_frame is None:
+                self._lap_markers[-1].end_frame = max(0, frame_index - 1)
+                self._lap_markers[-1].is_pit_in_lap = in_pits_during_lap
+
             compressor.finalize()
+
+            # Serialise lap markers for the file header
+            lap_markers_json = [
+                {
+                    "lap_number": m.lap_number,
+                    "start_frame": m.start_frame,
+                    "end_frame": m.end_frame,
+                    "lap_time": m.lap_time,
+                    "sector_times": m.sector_times,
+                    "is_pit_in_lap": m.is_pit_in_lap,
+                    "is_pit_out_lap": m.is_pit_out_lap,
+                }
+                for m in self._lap_markers
+            ]
 
             # Build the file header JSON
             header = {
@@ -357,6 +504,7 @@ class TelemetryRecorder:
                 "frame_fmt": fmt,
                 "frame_size": struct.calcsize(fmt),
                 "created_at": datetime.now(timezone.utc).isoformat(),
+                "lap_markers": lap_markers_json,
             }
             header_bytes = json.dumps(header, separators=(",", ":")).encode("utf-8")
 
@@ -442,6 +590,31 @@ def read_recorder_file(path: Path | str) -> tuple[dict, list[dict]]:
             offset += frame_size
 
     return header, frames
+
+
+def extract_lap_frames(path: Path | str, lap_number: int) -> list[dict]:
+    """Extract all recorded frames for a specific lap from a ``.tmu`` file.
+
+    Returns a list of frame dicts (same format as ``read_recorder_file``).
+    Returns an empty list if *lap_number* is not found in the lap markers.
+
+    Parameters
+    ----------
+    path:
+        Path to the ``.tmu`` recorder file.
+    lap_number:
+        The 1-based lap number to extract.
+    """
+    header, frames = read_recorder_file(path)
+    lap_markers: list[dict] = header.get("lap_markers", [])
+    for marker in lap_markers:
+        if marker.get("lap_number") == lap_number:
+            start = marker["start_frame"]
+            end = marker.get("end_frame")
+            if end is None:
+                return frames[start:]
+            return frames[start : end + 1]
+    return []
 
 
 # ── Module-private helpers ────────────────────────────────────────────────────
