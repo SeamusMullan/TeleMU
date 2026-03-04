@@ -13,6 +13,7 @@ from telemu import __version__
 from telemu.config import settings
 from telemu.lovense import LovenseClient
 from telemu.reader import DemoReader, TelemetryFrame, TelemetryReader
+from telemu.streaming import StreamingClient
 from telemu.ws.manager import ConnectionManager
 from telemu.ws.router import manager as ws_manager
 from telemu.ws.router import router as ws_router
@@ -54,6 +55,7 @@ async def lifespan(app: FastAPI):
     app.state.reader = reader
     app.state.ws_manager = ws_manager
     app.state.db_conn = None
+    app.state.streaming_client = StreamingClient(ws_manager)
     if not hasattr(app.state, "lovense"):
         app.state.lovense = LovenseClient(
             verify_tls=settings.lovense_verify_tls,
@@ -64,11 +66,19 @@ async def lifespan(app: FastAPI):
 
     reader.subscribe(lambda frame: _schedule_broadcast(app, frame))
     await reader.start()
+
+    # Auto-connect streaming client if configured
+    if settings.streaming_host:
+        await app.state.streaming_client.start(
+            settings.streaming_host, settings.streaming_port
+        )
+
     logger.info("TeleMU v%s started (demo=%s)", __version__, settings.demo_mode)
 
     yield
 
     await reader.stop()
+    await app.state.streaming_client.stop()
     if app.state.db_conn is not None:
         try:
             app.state.db_conn.close()
@@ -120,6 +130,7 @@ def create_app() -> FastAPI:
     from telemu.api.convert import router as convert_router
     from telemu.api.recordings import router as recordings_router
     from telemu.api.lovense import router as lovense_router
+    from telemu.api.streaming import router as streaming_router
 
     app.include_router(health_router, prefix="/api")
     app.include_router(sessions_router, prefix="/api")
@@ -129,6 +140,7 @@ def create_app() -> FastAPI:
     app.include_router(convert_router, prefix="/api")
     app.include_router(recordings_router, prefix="/api")
     app.include_router(lovense_router, prefix="/api")
+    app.include_router(streaming_router, prefix="/api")
     app.include_router(ws_router)
 
     return app

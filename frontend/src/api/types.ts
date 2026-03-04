@@ -104,3 +104,19 @@ export interface ConvertResponse {
   total: number;
   converted: number;
 }
+
+// Streaming client (engineer side)
+export interface StreamingStatus {
+  state: "idle" | "connecting" | "connected" | "reconnecting";
+  host: string;
+  port: number;
+  rx_frames: number;
+  lost_packets: number;
+  channel_count: number;
+}
+
+export interface StreamConnectRequest {
+  host: string;
+  port: number;
+}
+
