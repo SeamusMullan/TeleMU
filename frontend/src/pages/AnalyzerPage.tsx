@@ -1,13 +1,18 @@
-/** Signal analyzer — line, scatter, histogram, correlation plots. */
+/** Signal analyzer — widget-based layout. */
+
+import { useTelemetry } from "../hooks/useTelemetry";
+import WidgetPage from "../widgets/WidgetPage";
+import EditToolbar from "../widgets/EditToolbar";
 
 export default function AnalyzerPage() {
+  useTelemetry(); // Keep WS connected for live channel data
+
   return (
-    <div className="p-4">
-      <h1 className="mb-4 text-lg font-bold">Signal Analyzer</h1>
-      <p className="text-neutral-500">
-        Select signals to visualize with ECharts plots.
-      </p>
-      {/* TODO: v0.2.0 — ECharts plot types, signal tree */}
+    <div className="flex h-full flex-col">
+      <EditToolbar pageId="analyzer" />
+      <div className="flex-1 overflow-auto p-2">
+        <WidgetPage pageId="analyzer" />
+      </div>
     </div>
   );
 }

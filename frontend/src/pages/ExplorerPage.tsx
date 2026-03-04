@@ -1,13 +1,15 @@
-/** Data explorer — table browser, schema view, data preview. */
+/** Data explorer — widget-based layout. */
+
+import WidgetPage from "../widgets/WidgetPage";
+import EditToolbar from "../widgets/EditToolbar";
 
 export default function ExplorerPage() {
   return (
-    <div className="p-4">
-      <h1 className="mb-4 text-lg font-bold">Data Explorer</h1>
-      <p className="text-neutral-500">
-        Open a .duckdb session file to explore telemetry data.
-      </p>
-      {/* TODO: v0.2.0 — DataTable, schema view, filter bar */}
+    <div className="flex h-full flex-col">
+      <EditToolbar pageId="explorer" />
+      <div className="flex-1 overflow-auto p-2">
+        <WidgetPage pageId="explorer" />
+      </div>
     </div>
   );
 }
