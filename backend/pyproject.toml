@@ -11,6 +11,7 @@ dependencies = [
     "duckdb>=1.4.4",
     "numpy>=2.4",
     "scipy>=1.17",
+    "lz4>=4.3",
     "zstandard>=0.23",
     "pydantic-settings>=2.7",
     "pylove",
