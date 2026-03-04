@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ── WebSocket messages (server → client) ──────────────────────────────────────
@@ -138,3 +138,30 @@ class HealthResponse(BaseModel):
     version: str
     lmu_connected: bool = False
     active_clients: int = 0
+
+
+# ── Session metadata ─────────────────────────────────────────────────────────
+
+
+class SessionMetadata(BaseModel):
+    """Metadata captured and embedded into .tmu recording files."""
+
+    # Extracted from shared memory
+    track_name: str = ""
+    car_name: str = ""
+    car_class: str = ""
+    session_type: str = ""  # human-readable: "Practice", "Qualifying", "Race", etc.
+
+    # Auto-detected from scoring data
+    driver_name: str = ""
+    car_number: int = 0
+
+    # Timestamps
+    session_start_utc: str = ""  # ISO 8601 UTC
+    recording_start_utc: str = ""  # ISO 8601 UTC
+    recording_end_utc: str = ""  # ISO 8601 UTC
+
+    # User-editable fields
+    notes: str = Field(default="", description="Free-form user notes")
+    session_description: str = Field(default="", description="User session description")
+    setup_name: str = Field(default="", description="Setup name used during session")

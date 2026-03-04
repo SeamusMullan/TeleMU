@@ -117,6 +117,7 @@ def create_app() -> FastAPI:
     from telemu.api.tables import router as tables_router
     from telemu.api.query import router as query_router
     from telemu.api.export import router as export_router
+    from telemu.api.recordings import router as recordings_router
     from telemu.api.lovense import router as lovense_router
 
     app.include_router(health_router, prefix="/api")
@@ -124,6 +125,7 @@ def create_app() -> FastAPI:
     app.include_router(tables_router, prefix="/api")
     app.include_router(query_router, prefix="/api")
     app.include_router(export_router, prefix="/api")
+    app.include_router(recordings_router, prefix="/api")
     app.include_router(lovense_router, prefix="/api")
     app.include_router(ws_router)
 
