@@ -10,6 +10,8 @@ import type {
   TmuFileInfo,
   ConvertRequest,
   ConvertResponse,
+  RecordingStatus,
+  StartRecordingRequest,
 } from "./types";
 
 const BASE = "/api";
@@ -51,4 +53,9 @@ export const api = {
   query: (sql: string) => post<QueryResult>("/query", { sql }),
   tmuFiles: () => get<TmuFileInfo[]>("/convert/tmu-files"),
   convert: (req: ConvertRequest) => post<ConvertResponse>("/convert", req),
+  // Live recording
+  recordingStatus: () => get<RecordingStatus>("/live-recording/status"),
+  startRecording: (req: StartRecordingRequest = {}) =>
+    post<RecordingStatus>("/live-recording/start", req),
+  stopRecording: () => post<RecordingStatus>("/live-recording/stop", {}),
 };

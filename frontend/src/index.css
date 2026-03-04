@@ -9,6 +9,11 @@
   --color-blue: #4fc3f7;
 }
 
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;

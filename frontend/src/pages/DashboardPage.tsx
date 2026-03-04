@@ -6,6 +6,7 @@ import GaugeWidget from "../components/dashboard/GaugeWidget";
 import SparkStrip from "../components/dashboard/SparkStrip";
 import StatusRow from "../components/dashboard/StatusRow";
 import LapInfo from "../components/dashboard/LapInfo";
+import RecordingControls from "../components/dashboard/RecordingControls";
 
 const GAUGES = [
   { key: "speed", label: "Speed", min: 0, max: 340, unit: "km/h", warnHigh: 320 },
@@ -50,6 +51,11 @@ export default function DashboardPage() {
       {/* Status indicators */}
       <div className="mb-4">
         <StatusRow status={status} />
+      </div>
+
+      {/* Recording controls */}
+      <div className="mb-4">
+        <RecordingControls />
       </div>
 
       {/* Gauges grid */}
