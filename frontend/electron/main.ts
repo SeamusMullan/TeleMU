@@ -12,7 +12,8 @@ let minimizeToTray = true;
 let startMinimized = false;
 let backendProcess: ChildProcess | null = null;
 
-const isDev = process.env.NODE_ENV === "development";
+// app.isPackaged is false when running via `electron .` (dev) and true in built apps
+const isDev = !app.isPackaged;
 
 /* ------------------------------------------------------------------ */
 /*  Backend process management                                         */
@@ -86,7 +87,12 @@ let trayStatus: { connected: boolean; recording: boolean } = {
 /* ------------------------------------------------------------------ */
 
 function getIconPath(name: string): string {
-  return path.join(__dirname, "icons", name);
+  if (isDev) {
+    // Dev: icons are in electron/icons/ relative to project root
+    return path.join(__dirname, "..", "electron", "icons", name);
+  }
+  // Production: icons are in resources/icons/ via extraResources
+  return path.join(process.resourcesPath, "icons", name);
 }
 
 function getTrayIcon(): Electron.NativeImage {
@@ -184,7 +190,7 @@ function createWindow() {
     show: !startMinimized,
     backgroundColor: "#1a1a1a",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload.js"),  // compiled alongside main.js in dist-electron/
       contextIsolation: true,
       nodeIntegration: false,
     },

@@ -7,7 +7,7 @@
 #endif
 
 [Setup]
-AppId={{E8751A00-TELE-MU00-0000-000000000001}
+AppId={{9296A333-5119-4A71-A437-F80D1D91EAC1}
 AppName=TeleMU
 AppVersion={#AppVersion}
 AppVerName=TeleMU {#AppVersion}

@@ -28,6 +28,7 @@ frontend/.vite/
 
 # Electron
 frontend/out/
+frontend/dist-electron/
 
 # IDE
 .idea/

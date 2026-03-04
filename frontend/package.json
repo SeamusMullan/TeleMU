@@ -11,8 +11,9 @@
     "test:watch": "vitest",
     "ci": "bun run lint && bun run build && bun run test",
     "lint": "eslint src/",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "vite build && electron-builder"
+    "electron:compile": "tsc -p tsconfig.electron.json && node -e \"require('fs').writeFileSync('dist-electron/package.json','{\\\"type\\\":\\\"commonjs\\\"}')\"",
+    "electron:dev": "npm run electron:compile && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "vite build && npm run electron:compile && electron-builder"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.0.0",
@@ -47,18 +48,23 @@
     "vitest": "^3.0.0",
     "wait-on": "^8.0.0"
   },
-  "main": "electron/main.ts",
+  "main": "dist-electron/main.js",
   "build": {
     "appId": "com.telemu.app",
     "productName": "TeleMU",
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "dist-electron/**/*"
     ],
     "extraResources": [
       {
         "from": "../backend/dist/telemu.exe",
         "to": "telemu.exe"
+      },
+      {
+        "from": "electron/icons",
+        "to": "icons",
+        "filter": ["**/*"]
       }
     ],
     "win": {

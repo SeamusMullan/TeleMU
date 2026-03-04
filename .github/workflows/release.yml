@@ -61,6 +61,8 @@ jobs:
         working-directory: backend
         run: >
           uv run pyinstaller --onefile --name telemu
+          --collect-submodules telemu
+          --collect-all duckdb
           --hidden-import uvicorn
           --hidden-import uvicorn.logging
           --hidden-import uvicorn.loops
@@ -73,6 +75,34 @@ jobs:
           --hidden-import uvicorn.lifespan
           --hidden-import uvicorn.lifespan.on
           --hidden-import uvicorn.lifespan.off
+          --hidden-import multipart
+          --hidden-import multipart.multipart
+          --hidden-import pydantic
+          --hidden-import pydantic_core
+          --hidden-import pydantic_settings
+          --hidden-import starlette
+          --hidden-import starlette.responses
+          --hidden-import starlette.routing
+          --hidden-import starlette.middleware
+          --hidden-import starlette.middleware.cors
+          --hidden-import starlette.websockets
+          --hidden-import starlette.formparsers
+          --hidden-import starlette.concurrency
+          --hidden-import starlette.status
+          --hidden-import anyio
+          --hidden-import anyio._backends
+          --hidden-import anyio._backends._asyncio
+          --hidden-import websockets
+          --hidden-import websockets.legacy
+          --hidden-import websockets.legacy.server
+          --hidden-import httptools
+          --hidden-import httptools.parser
+          --hidden-import zstandard
+          --hidden-import lz4
+          --hidden-import lz4.frame
+          --hidden-import lz4.block
+          --hidden-import numpy
+          --hidden-import scipy
           telemu/main.py
 
       # -- Frontend + Electron --
@@ -89,6 +119,10 @@ jobs:
       - name: Build Vite app
         working-directory: frontend
         run: npm run build
+
+      - name: Compile Electron main process
+        working-directory: frontend
+        run: npm run electron:compile
 
       - name: Build Electron app (unpacked)
         working-directory: frontend
