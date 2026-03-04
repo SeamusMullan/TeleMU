@@ -55,6 +55,12 @@ VALID_SAMPLE_RATES: frozenset[int] = frozenset({10, 20, 30, 60})
 # How often (seconds) to emit a stats_updated signal during recording
 _STATS_INTERVAL_S = 1.0
 
+# Buffer fullness threshold at which a warning is logged
+_BUFFER_WARN_THRESHOLD = 0.80
+
+# Minimum seconds between repeated buffer-full warnings to avoid log spam
+_BUFFER_WARN_INTERVAL_S = 5.0
+
 
 @dataclass
 class LapMarker:
@@ -77,6 +83,7 @@ class RecordingStats:
     bytes_written: int = 0
     duration_s: float = 0.0
     drop_count: int = 0
+    buffer_utilization: float = 0.0
     lap_count: int = 0
 
 
@@ -92,7 +99,8 @@ class TelemetryRecorder:
         Recording rate in Hz.  Must be one of ``{10, 20, 30, 60}``.
     ring_buffer_size:
         Maximum number of frames buffered between the reader callback and the
-        disk-writer task.  Frames are silently dropped when the buffer is full.
+        disk-writer task.  Defaults to 5 seconds of data (``sample_rate * 5``).
+        Frames are silently dropped when the buffer is full.
     channels:
         Ordered list of channel names to record.  ``None`` records every
         channel present in the first frame received.
@@ -105,7 +113,7 @@ class TelemetryRecorder:
         self,
         output_dir: Path | str = "recordings",
         sample_rate: int = 60,
-        ring_buffer_size: int = 1200,
+        ring_buffer_size: int | None = None,
         channels: list[str] | None = None,
         chunk_frames: int | None = None,
     ) -> None:
@@ -116,7 +124,7 @@ class TelemetryRecorder:
 
         self._output_dir = Path(output_dir)
         self._sample_rate = sample_rate
-        self._ring_buffer_size = ring_buffer_size
+        self._ring_buffer_size = ring_buffer_size if ring_buffer_size is not None else sample_rate * 5
         self._channels = channels
         self._chunk_frames = chunk_frames if chunk_frames is not None else sample_rate
 
@@ -129,6 +137,7 @@ class TelemetryRecorder:
         self._current_file: Path | None = None
         self._stats = RecordingStats()
         self._start_mono: float = 0.0
+        self._last_buffer_warning: float = 0.0
         self._lap_markers: list[LapMarker] = []
 
         # Signal callbacks
@@ -185,11 +194,17 @@ class TelemetryRecorder:
         duration = (
             time.monotonic() - self._start_mono if self._recording else self._stats.duration_s
         )
+        utilization = (
+            self._queue.qsize() / self._ring_buffer_size
+            if self._queue is not None and self._ring_buffer_size > 0
+            else 0.0
+        )
         return RecordingStats(
             frames_written=self._stats.frames_written,
             bytes_written=self._stats.bytes_written,
             duration_s=duration,
             drop_count=self._stats.drop_count,
+            buffer_utilization=utilization,
             lap_count=len(self._lap_markers),
         )
 
@@ -295,10 +310,50 @@ class TelemetryRecorder:
         """Synchronous callback from TelemetryReader; enqueues onto the ring buffer."""
         if not self._recording or self._paused or self._queue is None:
             return
+
+        # 80% fullness warning (throttled)
+        qsize = self._queue.qsize()
+        if qsize >= self._ring_buffer_size * _BUFFER_WARN_THRESHOLD:
+            now = time.monotonic()
+            if now - self._last_buffer_warning >= _BUFFER_WARN_INTERVAL_S:
+                logger.warning(
+                    "Recording buffer at %.0f%% capacity (%d/%d frames)",
+                    qsize / self._ring_buffer_size * 100,
+                    qsize,
+                    self._ring_buffer_size,
+                )
+                self._last_buffer_warning = now
+
         try:
             self._queue.put_nowait(frame)
         except asyncio.QueueFull:
+            # Drop the oldest frame to make room, then enqueue the new one.
+            # In single-threaded asyncio, no other coroutine runs between these
+            # non-awaiting calls, so get_nowait/put_nowait should not fail.
+            try:
+                self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                # Unexpected in single-threaded asyncio; count as a drop and bail.
+                self._stats.drop_count += 1
+                logger.warning(
+                    "Recording buffer overflow: queue empty on drain (total dropped: %d)",
+                    self._stats.drop_count,
+                )
+                return
             self._stats.drop_count += 1
+            logger.warning(
+                "Recording buffer overflow: dropped oldest frame (total dropped: %d)",
+                self._stats.drop_count,
+            )
+            try:
+                self._queue.put_nowait(frame)
+            except asyncio.QueueFull:
+                # Still full after draining one slot (should not happen in practice).
+                self._stats.drop_count += 1
+                logger.warning(
+                    "Recording buffer overflow: new frame also lost (total dropped: %d)",
+                    self._stats.drop_count,
+                )
 
     async def _writer_loop(
         self,
