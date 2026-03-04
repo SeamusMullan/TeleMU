@@ -381,3 +381,30 @@ class TestEdgeCases:
         assert "speed" not in r2
         assert "rpm" in r2
         assert "rpm" not in r1
+
+    def test_max_channels_roundtrip(self):
+        """Serializer with all available channels should round-trip without error."""
+        t = _make_telemetry(mEngineRPM=5500.0, mGear=4, mFuel=60.0)
+        s = _make_scoring(mPlace=2, mLapDist=1234.5)
+
+        all_names = list(ALL_CHANNELS.keys())
+        ser = FrameSerializer(all_names)
+
+        # Frame size should match the struct format
+        assert ser.frame_size == struct.calcsize(ser.format_string)
+        assert len(ser.channel_names) == len(all_names)
+
+        frame = ser.serialize(99.0, t, s)
+        assert len(frame) == ser.frame_size
+
+        result = ser.deserialize(frame)
+        assert result["timestamp"] == pytest.approx(99.0)
+        assert result["rpm"] == pytest.approx(5500.0)
+        assert result["gear"] == 4
+        assert result["fuel"] == pytest.approx(60.0)
+        assert result["place"] == 2
+        assert result["lap_dist"] == pytest.approx(1234.5)
+
+        # Every channel name must be present in result
+        for name in all_names:
+            assert name in result
