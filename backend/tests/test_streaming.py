@@ -34,12 +34,12 @@ from telemu.streaming.server import (
 
 
 def test_discovery_packet_length():
-    pkt = build_discovery_packet("Driver", "Track", "Car", 0, 9101, 9100, 42)
+    pkt = build_discovery_packet("Driver", "Track", "Car", 0, 19742, 19741, 42)
     assert len(pkt) == 176
 
 
 def test_discovery_packet_fields():
-    pkt = build_discovery_packet("Alice", "Spa", "LMP1", 1, 9101, 9100, 0xDEADBEEF)
+    pkt = build_discovery_packet("Alice", "Spa", "LMP1", 1, 19742, 19741, 0xDEADBEEF)
     magic, version, msg_type = struct.unpack_from("<4sHB", pkt, 0)
     assert magic == MAGIC
     assert version == PROTOCOL_VERSION
@@ -52,8 +52,8 @@ def test_discovery_packet_fields():
     assert vehicle_name == "LMP1"
     session_type, tcp_port, udp_port, session_id = struct.unpack_from("<BHHI", pkt, 167)
     assert session_type == 1
-    assert tcp_port == 9101
-    assert udp_port == 9100
+    assert tcp_port == 19742
+    assert udp_port == 19741
     assert session_id == 0xDEADBEEF
 
 

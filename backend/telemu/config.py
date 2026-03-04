@@ -37,9 +37,9 @@ class Settings(BaseSettings):
 
     # Streaming server (driver side)
     streaming_host: str = ""  # empty = all interfaces
-    streaming_discovery_port: int = 9099
-    streaming_telemetry_port: int = 9100
-    streaming_control_port: int = 9101
+    streaming_discovery_port: int = 19740
+    streaming_telemetry_port: int = 19741
+    streaming_control_port: int = 19742
     streaming_driver_name: str = ""  # empty = system hostname
 
     # CORS (for development; Electron doesn't need this)

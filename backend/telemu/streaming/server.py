@@ -1,10 +1,10 @@
 """Telemetry streaming server (driver side).
 
 Broadcasts live telemetry to LAN clients via the TMU v2 protocol:
-- UDP broadcast discovery on the discovery port (default 9099, every 2 seconds)
-- TCP control channel on the control port (default 9101) for handshake and
+- UDP broadcast discovery on the discovery port (default 19740, every 2 seconds)
+- TCP control channel on the control port (default 19742) for handshake and
   channel negotiation
-- UDP unicast telemetry frames on the telemetry port (default 9100) to each
+- UDP unicast telemetry frames on the telemetry port (default 19741) to each
   subscribed client
 
 Runs as asyncio tasks alongside TelemetryReader.
@@ -205,9 +205,9 @@ class TelemetryStreamer:
     def __init__(
         self,
         host: str = "",
-        discovery_port: int = 9099,
-        telemetry_port: int = 9100,
-        control_port: int = 9101,
+        discovery_port: int = 19740,
+        telemetry_port: int = 19741,
+        control_port: int = 19742,
         driver_name: str = "",
     ) -> None:
         self._host = host

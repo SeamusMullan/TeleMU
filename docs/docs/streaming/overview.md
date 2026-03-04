@@ -40,9 +40,9 @@ flowchart TD
     end
 
     subgraph Network["LAN"]
-        UDP["UDP :9100<br/>Telemetry frames"]
-        TCP["TCP :9101<br/>Control channel"]
-        Discovery["UDP broadcast :9099<br/>Discovery"]
+        UDP["UDP :19741<br/>Telemetry frames"]
+        TCP["TCP :19742<br/>Control channel"]
+        Discovery["UDP broadcast :19740<br/>Discovery"]
     end
 
     subgraph EngineerPC["Engineer PC"]
@@ -66,9 +66,9 @@ flowchart TD
 The driver's TeleMU instance acts as the streaming server:
 
 - `TelemetryStreamer` receives frame data from `TelemetryReader` (same signal as recorder)
-- Broadcasts discovery announcements on UDP port 9099
-- Accepts TCP control connections on port 9101
-- Sends telemetry frames on UDP port 9100
+- Broadcasts discovery announcements on UDP port 19740
+- Accepts TCP control connections on port 19742
+- Sends telemetry frames on UDP port 19741
 
 ### Engineer Mode (Client)
 
@@ -139,6 +139,6 @@ class StreamClient(QThread):
 - **Files to modify**: `telemetry_reader.py` (add `frame_data` signal if not already added for recorder), `dashboard.py` (add connect UI), `app.py` (role detection, wire streamer or client)
 - **Pattern**: QThread for both server and client; use Qt's socket classes or Python's `socket` + `select`
 - **Protocol**: see [Protocol Spec](protocol.md) for wire formats and sequence diagrams
-- **Ports**: 9099 (discovery), 9100 (telemetry UDP), 9101 (control TCP) — configurable
+- **Ports**: 19740 (discovery), 19741 (telemetry UDP), 19742 (control TCP) — configurable
 - **Testing**: loopback test — stream from one thread, receive on another, verify data integrity
 - **Related issues**: check project tracker for streaming-related issues

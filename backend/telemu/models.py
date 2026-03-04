@@ -145,9 +145,9 @@ class StreamingStatus(BaseModel):
     clients_connected: int = 0
     data_rate_bps: float = 0.0
     host: str = ""
-    discovery_port: int = 9099
-    telemetry_port: int = 9100
-    control_port: int = 9101
+    discovery_port: int = 19740
+    telemetry_port: int = 19741
+    control_port: int = 19742
 
 
 # ── Session metadata ─────────────────────────────────────────────────────────
