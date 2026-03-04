@@ -538,3 +538,217 @@ class TestPackFrame:
         raw = _pack_frame(fmt, channel_names, frame)
         ts, val = struct.unpack(fmt, raw)
         assert val == pytest.approx(0.0)
+
+
+# ── Lap splitting ─────────────────────────────────────────────────────────────
+
+
+def _lap_frame(ts: float, lap: int, last_time: str = "", sectors: list | None = None, in_pits: bool = False, **channels: float) -> FakeFrame:
+    """Build a FakeFrame that represents a lap boundary event."""
+    f = FakeFrame(ts, speed=100.0, rpm=5000.0, **channels)
+    f.lap_info = {
+        "lap": lap,
+        "last_time": last_time,
+        "best_time": last_time,
+        "sectors": sectors or ["0:30.000", "0:35.000", "0:40.000"],
+        "in_pits": in_pits,
+    }
+    f.status = {"pit": in_pits}
+    return f
+
+
+from telemu.recording.recorder import LapMarker, extract_lap_frames
+
+
+class TestLapSplitting:
+    @pytest.mark.asyncio
+    async def test_no_lap_markers_when_no_lap_info(self, tmp_path):
+        """Recording frames without lap_info produces no lap markers."""
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60)
+        reader = FakeReader()
+        await rec.start(reader)
+        for f in _frames(10):
+            reader.push(f)
+        await rec.stop()
+        assert rec.lap_markers == []
+
+    @pytest.mark.asyncio
+    async def test_single_lap_marker_detected(self, tmp_path):
+        """A lap_info frame triggers a lap marker."""
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60)
+        reader = FakeReader()
+        await rec.start(reader)
+
+        f1 = _lap_frame(0.0, lap=1)
+        reader.push(f1)
+        for f in _frames(5, start=0.1):
+            reader.push(f)
+
+        await rec.stop()
+        markers = rec.lap_markers
+        assert len(markers) == 1
+        assert markers[0].lap_number == 1
+        assert markers[0].start_frame == 0
+
+    @pytest.mark.asyncio
+    async def test_multiple_lap_markers(self, tmp_path):
+        """Two lap boundaries produce two lap markers with frame indices."""
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60)
+        reader = FakeReader()
+        await rec.start(reader)
+
+        # Lap 1 starts
+        reader.push(_lap_frame(0.0, lap=1))
+        for f in _frames(10, start=0.1):
+            reader.push(f)
+
+        # Lap 2 starts (lap 1 ends)
+        reader.push(_lap_frame(0.5, lap=2, last_time="1:30.000", sectors=["0:30.0", "0:35.0", "0:25.0"]))
+        for f in _frames(5, start=0.6):
+            reader.push(f)
+
+        await rec.stop()
+        markers = rec.lap_markers
+        assert len(markers) == 2
+
+        lap1 = markers[0]
+        assert lap1.lap_number == 1
+        assert lap1.start_frame == 0
+        assert lap1.end_frame is not None
+        # Lap 1 end_frame should be one before lap 2 start_frame
+        assert lap1.end_frame == markers[1].start_frame - 1
+
+        lap2 = markers[1]
+        assert lap2.lap_number == 2
+        assert lap2.end_frame is not None  # finalized on stop
+
+    @pytest.mark.asyncio
+    async def test_lap_time_recorded_on_boundary(self, tmp_path):
+        """Sector times and lap time for the completed lap are recorded on boundary."""
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60)
+        reader = FakeReader()
+        await rec.start(reader)
+
+        reader.push(_lap_frame(0.0, lap=1))
+        reader.push(_lap_frame(0.2, lap=2, last_time="1:30.000", sectors=["0:30.0", "0:35.0", "0:25.0"]))
+
+        await rec.stop()
+        markers = rec.lap_markers
+        assert len(markers) == 2
+        # Lap 1's time and sectors are recorded when lap 2 starts
+        assert markers[0].lap_time == "1:30.000"
+        assert markers[0].sector_times == ["0:30.0", "0:35.0", "0:25.0"]
+
+    @pytest.mark.asyncio
+    async def test_pit_in_lap_detected(self, tmp_path):
+        """is_pit_in_lap is True when car visited pits during a lap."""
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60)
+        reader = FakeReader()
+        await rec.start(reader)
+
+        reader.push(_lap_frame(0.0, lap=1))
+        # A frame mid-lap with pit=True
+        pit_frame = FakeFrame(0.1, speed=60.0, rpm=3000.0)
+        pit_frame.lap_info = {}
+        pit_frame.status = {"pit": True}
+        reader.push(pit_frame)
+        # Lap 2 starts
+        reader.push(_lap_frame(0.3, lap=2))
+
+        await rec.stop()
+        markers = rec.lap_markers
+        assert len(markers) == 2
+        assert markers[0].is_pit_in_lap is True
+        assert markers[1].is_pit_in_lap is False  # no pits on lap 2
+
+    @pytest.mark.asyncio
+    async def test_pit_out_lap_detected(self, tmp_path):
+        """is_pit_out_lap is True when a lap boundary frame has in_pits=True."""
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60)
+        reader = FakeReader()
+        await rec.start(reader)
+
+        # Lap starts from pits
+        reader.push(_lap_frame(0.0, lap=1, in_pits=True))
+        reader.push(_lap_frame(0.3, lap=2, in_pits=False))
+
+        await rec.stop()
+        markers = rec.lap_markers
+        assert len(markers) == 2
+        assert markers[0].is_pit_out_lap is True
+        assert markers[1].is_pit_out_lap is False
+
+    @pytest.mark.asyncio
+    async def test_lap_count_in_stats(self, tmp_path):
+        """RecordingStats.lap_count reflects the number of detected laps."""
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60)
+        reader = FakeReader()
+        await rec.start(reader)
+
+        reader.push(_lap_frame(0.0, lap=1))
+        reader.push(_lap_frame(0.3, lap=2))
+        reader.push(_lap_frame(0.6, lap=3))
+
+        await rec.stop()
+        assert rec.stats.lap_count == 3
+
+    @pytest.mark.asyncio
+    async def test_lap_markers_in_file_header(self, tmp_path):
+        """Lap markers are serialised into the .tmu file header."""
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60)
+        reader = FakeReader()
+        await rec.start(reader)
+
+        reader.push(_lap_frame(0.0, lap=1))
+        reader.push(_lap_frame(0.3, lap=2, last_time="1:45.000"))
+
+        path = await rec.stop()
+        assert path is not None
+
+        header, _ = read_recorder_file(path)
+        laps = header.get("lap_markers", [])
+        assert len(laps) == 2
+        assert laps[0]["lap_number"] == 1
+        assert laps[1]["lap_number"] == 2
+        assert laps[0]["lap_time"] == "1:45.000"
+
+    @pytest.mark.asyncio
+    async def test_extract_lap_frames(self, tmp_path):
+        """extract_lap_frames returns only the frames for the requested lap."""
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60)
+        reader = FakeReader()
+        await rec.start(reader)
+
+        # Lap 1: frames at t=0..0.1
+        reader.push(_lap_frame(0.0, lap=1))
+        for f in _frames(5, start=0.05):
+            reader.push(f)
+
+        # Lap 2: frames at t=0.5..0.6
+        reader.push(_lap_frame(0.5, lap=2, last_time="1:30.000"))
+        for f in _frames(5, start=0.55):
+            reader.push(f)
+
+        path = await rec.stop()
+        assert path is not None
+
+        lap1_frames = extract_lap_frames(path, lap_number=1)
+        lap2_frames = extract_lap_frames(path, lap_number=2)
+
+        assert len(lap1_frames) > 0
+        assert len(lap2_frames) > 0
+        # Lap 2 starts later in time than lap 1
+        assert lap2_frames[0]["timestamp"] > lap1_frames[-1]["timestamp"]
+
+    @pytest.mark.asyncio
+    async def test_extract_lap_frames_missing_lap(self, tmp_path):
+        """extract_lap_frames returns [] for a lap number not in the file."""
+        rec = TelemetryRecorder(output_dir=tmp_path, sample_rate=60)
+        reader = FakeReader()
+        await rec.start(reader)
+        reader.push(_lap_frame(0.0, lap=1))
+        path = await rec.stop()
+        assert path is not None
+
+        result = extract_lap_frames(path, lap_number=99)
+        assert result == []

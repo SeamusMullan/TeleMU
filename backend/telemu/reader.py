@@ -209,6 +209,7 @@ class TelemetryReader:
                         else 0
                     ),
                 ],
+                "in_pits": bool(vs.mInPits),
             }
 
         return TelemetryFrame(
