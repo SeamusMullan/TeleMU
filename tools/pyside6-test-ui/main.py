@@ -83,7 +83,6 @@ class ApiExplorerTab(QWidget):
         layout.addWidget(self.output)
 
         self.setLayout(layout)
-        self.ensure_uid()
         self.load_preset()
 
     def load_preset(self):
@@ -197,6 +196,7 @@ class LovenseTab(QWidget):
         layout.addWidget(self.output)
 
         self.setLayout(layout)
+        self.ensure_uid()
 
     def _log(self, text):
         ts = datetime.now().strftime("%H:%M:%S")
