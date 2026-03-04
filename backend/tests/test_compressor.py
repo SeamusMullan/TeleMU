@@ -2,6 +2,7 @@
 
 import io
 import json
+import math
 import struct
 import time
 
@@ -12,6 +13,14 @@ from telemu.recording.compressor import (
     StreamCompressor,
     decompress_chunk,
     read_index,
+)
+from telemu.recording.tmu_format import (
+    ChannelDef,
+    ChannelType,
+    compute_channel_offsets,
+    frame_payload_size,
+    pack_frame,
+    unpack_frame,
 )
 
 
@@ -188,3 +197,151 @@ class TestSeekability:
         idx = read_index(buf)
         offsets = [ch["offset"] for ch in idx["chunks"]]
         assert offsets == sorted(offsets), "Chunk offsets must be monotonically increasing"
+
+
+# ── TMU format integration & performance ──────────────────────────────────────
+
+# Channels matching the real telemetry reader output
+_TMU_CHANNELS = [
+    ChannelDef("speed", ChannelType.FLOAT64, "km/h", 0),
+    ChannelDef("rpm", ChannelType.FLOAT64, "rpm", 0),
+    ChannelDef("throttle", ChannelType.FLOAT64, "%", 0),
+    ChannelDef("brake", ChannelType.FLOAT64, "%", 0),
+    ChannelDef("gear", ChannelType.INT32, "", 0),
+    ChannelDef("steering", ChannelType.FLOAT64, "deg", 0),
+    ChannelDef("fuel", ChannelType.FLOAT64, "L", 0),
+    ChannelDef("fuel_capacity", ChannelType.FLOAT64, "L", 0),
+    ChannelDef("rpm_max", ChannelType.FLOAT64, "rpm", 0),
+    ChannelDef("tyre_fl", ChannelType.FLOAT64, "C", 0),
+    ChannelDef("tyre_fr", ChannelType.FLOAT64, "C", 0),
+    ChannelDef("tyre_rl", ChannelType.FLOAT64, "C", 0),
+    ChannelDef("tyre_rr", ChannelType.FLOAT64, "C", 0),
+    ChannelDef("brake_temp", ChannelType.FLOAT64, "C", 0),
+]
+compute_channel_offsets(_TMU_CHANNELS)
+
+
+def _make_tmu_frame(i: int) -> bytes:
+    """Build one binary TMU frame with realistic telemetry values."""
+    t = i * (1.0 / 60)
+    values: list[tuple[ChannelType, object]] = [
+        (ChannelType.FLOAT64, 180.0 + 100 * math.sin(t * 0.3)),       # speed
+        (ChannelType.FLOAT64, 4000 + 4000 * (0.5 + 0.5 * math.sin(t * 0.5))),  # rpm
+        (ChannelType.FLOAT64, max(0, min(100, 50 + 50 * math.sin(t * 0.4)))),   # throttle
+        (ChannelType.FLOAT64, max(0, min(100, 30 * max(0, -math.sin(t * 0.4))))),  # brake
+        (ChannelType.INT32, max(1, min(7, int(3.5 + 3 * math.sin(t * 0.2))))),  # gear
+        (ChannelType.FLOAT64, 30 * math.sin(t * 0.8)),                # steering
+        (ChannelType.FLOAT64, max(0, 80 - t * 0.05)),                 # fuel
+        (ChannelType.FLOAT64, 110.0),                                  # fuel_capacity
+        (ChannelType.FLOAT64, 8500.0),                                 # rpm_max
+        (ChannelType.FLOAT64, 85 + 10 * math.sin(t * 0.1)),           # tyre_fl
+        (ChannelType.FLOAT64, 87 + 10 * math.sin(t * 0.1 + 0.5)),    # tyre_fr
+        (ChannelType.FLOAT64, 82 + 8 * math.sin(t * 0.1 + 1.0)),     # tyre_rl
+        (ChannelType.FLOAT64, 84 + 8 * math.sin(t * 0.1 + 1.5)),     # tyre_rr
+        (ChannelType.FLOAT64, 400 + 200 * abs(math.sin(t * 0.3))),    # brake_temp
+    ]
+    return pack_frame(t, values)
+
+
+class TestTMUFormatCompression:
+    """Compress actual TMU-spec binary frames and verify performance."""
+
+    FRAME_COUNT = 3600  # 60 seconds at 60Hz
+
+    @pytest.fixture()
+    def tmu_frames(self):
+        return [_make_tmu_frame(i) for i in range(self.FRAME_COUNT)]
+
+    def test_tmu_roundtrip_lz4(self, tmu_frames):
+        """Compress TMU binary frames with LZ4 and verify lossless roundtrip."""
+        raw_blob = b"".join(tmu_frames)
+        buf = io.BytesIO()
+        c = StreamCompressor(buf, chunk_frames=60, algorithm="lz4")
+        for f in tmu_frames:
+            c.write_frame(f)
+        c.finalize()
+
+        idx = read_index(buf)
+        reassembled = b"".join(
+            decompress_chunk(buf, chunk, algorithm="lz4")
+            for chunk in idx["chunks"]
+        )
+        assert reassembled == raw_blob
+
+        # Verify individual frames can be unpacked after decompression
+        fsize = frame_payload_size(_TMU_CHANNELS)
+        for i in range(0, min(5, self.FRAME_COUNT)):
+            ts, vals = unpack_frame(reassembled[i * fsize : (i + 1) * fsize], _TMU_CHANNELS)
+            assert isinstance(ts, float)
+            assert "speed" in vals
+            assert "rpm" in vals
+
+    def test_tmu_roundtrip_zstd(self, tmu_frames):
+        """Compress TMU binary frames with zstd and verify lossless roundtrip."""
+        raw_blob = b"".join(tmu_frames)
+        buf = io.BytesIO()
+        c = StreamCompressor(buf, chunk_frames=60, algorithm="zstd")
+        for f in tmu_frames:
+            c.write_frame(f)
+        c.finalize()
+
+        idx = read_index(buf)
+        assert idx["algorithm"] == "zstd"
+        reassembled = b"".join(
+            decompress_chunk(buf, chunk, algorithm="zstd")
+            for chunk in idx["chunks"]
+        )
+        assert reassembled == raw_blob
+
+    def test_tmu_compression_ratio(self, tmu_frames):
+        """Binary TMU telemetry should achieve meaningful compression."""
+        raw_size = sum(len(f) for f in tmu_frames)
+        buf = io.BytesIO()
+        c = StreamCompressor(buf, chunk_frames=60, algorithm="lz4")
+        for f in tmu_frames:
+            c.write_frame(f)
+        c.finalize()
+
+        compressed_size = sum(ch["compressed_size"] for ch in c.index)
+        ratio = raw_size / compressed_size
+        # Binary float telemetry is harder to compress than JSON,
+        # but repeated patterns still yield > 1x
+        assert ratio > 1.0, f"Expected compression, got ratio {ratio:.2f}"
+
+    def test_tmu_chunk_latency(self, tmu_frames):
+        """Compressing one 60-frame chunk of TMU data should take < 1ms."""
+        buf = io.BytesIO()
+        c = StreamCompressor(buf, chunk_frames=60, algorithm="lz4")
+
+        # Pre-fill 59 frames
+        for f in tmu_frames[:59]:
+            c.write_frame(f)
+
+        # Time the 60th frame write (triggers chunk flush)
+        start = time.perf_counter()
+        c.write_frame(tmu_frames[59])
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        c.finalize()
+
+        assert elapsed_ms < 1.0, f"Chunk compress took {elapsed_ms:.3f}ms (want < 1ms)"
+
+    def test_tmu_throughput(self, tmu_frames):
+        """Measure throughput: should sustain >> 60 fps."""
+        buf = io.BytesIO()
+        c = StreamCompressor(buf, chunk_frames=60, algorithm="lz4")
+
+        start = time.perf_counter()
+        for f in tmu_frames:
+            c.write_frame(f)
+        c.finalize()
+        elapsed = time.perf_counter() - start
+
+        fps = self.FRAME_COUNT / elapsed
+        # Must handle at least 60Hz; in practice thousands of fps
+        assert fps > 60, f"Throughput {fps:.0f} fps is too low (need > 60)"
+
+    def test_tmu_frame_size_preserved(self, tmu_frames):
+        """Each TMU frame should be the expected binary size."""
+        expected = frame_payload_size(_TMU_CHANNELS)
+        for f in tmu_frames[:10]:
+            assert len(f) == expected
