@@ -2,17 +2,18 @@
 
 Exports
 -------
-TelemetryStreamer
-    Driver-side server: broadcasts discovery, accepts TCP control connections,
-    and sends LZ4-compressed UDP telemetry frames to each subscribed engineer.
+StreamingClient
+    Engineer-side async client: connects to a driver's streaming server, receives
+    UDP telemetry frames, and feeds them into the WebSocket dashboard.
 StreamClient
-    Engineer-side client: discovers drivers via UDP broadcast, completes the
-    TCP handshake, and receives UDP telemetry frames.
-protocol
-    Wire-format constants and packet encode/decode functions.
+    Engineer-side sync/threaded client: pairs with TelemetryStreamer for
+    loopback testing and non-asyncio usage.
+TelemetryStreamer
+    Driver-side threaded server: broadcasts discovery, accepts TCP control
+    connections, and sends UDP telemetry frames to each subscribed engineer.
 """
 
-from .client import StreamClient
-from .streamer import TelemetryStreamer
+from telemu.streaming.client import StreamClient, StreamingClient
+from telemu.streaming.server import TelemetryStreamer
 
-__all__ = ["TelemetryStreamer", "StreamClient"]
+__all__ = ["StreamClient", "StreamingClient", "TelemetryStreamer"]

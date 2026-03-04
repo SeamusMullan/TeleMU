@@ -7,6 +7,7 @@ import SettingsPage from "./pages/SettingsPage";
 import AlertsPage from "./pages/AlertsPage";
 import AlertBanner from "./components/alerts/AlertBanner";
 import AlertFlash from "./components/alerts/AlertFlash";
+import StreamingPage from "./pages/StreamingPage";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard" },
@@ -14,6 +15,7 @@ const NAV_ITEMS = [
   { to: "/analyzer", label: "Analyzer" },
   { to: "/convert", label: "Convert" },
   { to: "/alerts", label: "Alerts" },
+  { to: "/streaming", label: "Streaming" },
   { to: "/settings", label: "Settings" },
 ] as const;
 
@@ -51,6 +53,7 @@ export default function App() {
             <Route path="/analyzer" element={<AnalyzerPage />} />
             <Route path="/convert" element={<ConvertPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
+            <Route path="/streaming" element={<StreamingPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </main>

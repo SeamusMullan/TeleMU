@@ -6,6 +6,8 @@ import GaugeWidget from "../components/dashboard/GaugeWidget";
 import SparkStrip from "../components/dashboard/SparkStrip";
 import StatusRow from "../components/dashboard/StatusRow";
 import LapInfo from "../components/dashboard/LapInfo";
+import RecordingControls from "../components/dashboard/RecordingControls";
+import StreamingPanel from "../components/dashboard/StreamingPanel";
 
 const GAUGES = [
   { key: "speed", label: "Speed", min: 0, max: 340, unit: "km/h", warnHigh: 320 },
@@ -52,6 +54,11 @@ export default function DashboardPage() {
         <StatusRow status={status} />
       </div>
 
+      {/* Recording controls */}
+      <div className="mb-4">
+        <RecordingControls />
+      </div>
+
       {/* Gauges grid */}
       <div className="mb-4 grid grid-cols-3 gap-3 lg:grid-cols-6">
         {GAUGES.map((g) => {
@@ -80,7 +87,7 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {/* Sparklines + Lap info */}
+      {/* Sparklines + Lap info + Streaming */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_200px]">
         <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
           {SPARKLINES.map((s) => {
@@ -105,7 +112,10 @@ export default function DashboardPage() {
             );
           })}
         </div>
-        <LapInfo lapInfo={lapInfo} />
+        <div className="flex flex-col gap-3">
+          <LapInfo lapInfo={lapInfo} />
+          <StreamingPanel />
+        </div>
       </div>
     </div>
   );

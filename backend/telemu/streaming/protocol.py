@@ -597,3 +597,98 @@ CHANNEL_ID = {
 
 #: Reverse mapping: channel_id → name
 CHANNEL_NAME: dict[int, str] = {v: k for k, v in CHANNEL_ID.items()}
+
+
+# ── Backward-compatible aliases ──────────────────────────────────────────────
+# Used by StreamingClient (the async engineer-side client) and its tests.
+
+MAGIC = STREAM_MAGIC
+DEFAULT_TCP_PORT = CONTROL_PORT
+DEFAULT_UDP_PORT = TELEMETRY_PORT
+
+# Message type aliases (plain ints matching MsgType enum values)
+MSG_HELLO = int(MsgType.HELLO)
+MSG_WELCOME = int(MsgType.WELCOME)
+MSG_SUBSCRIBE = int(MsgType.SUBSCRIBE)
+MSG_SUBSCRIBED = int(MsgType.SUBSCRIBED)
+MSG_SESSION_UPDATE = int(MsgType.SESSION_UPDATE)
+MSG_PING = int(MsgType.PING)
+MSG_PONG = int(MsgType.PONG)
+MSG_DISCONNECT = int(MsgType.DISCONNECT)
+MSG_DISCOVERY = int(MsgType.DISCOVERY_ANNOUNCE)
+
+# Disconnect reason aliases
+DISCONNECT_NORMAL = int(DisconnectReason.NORMAL)
+DISCONNECT_VERSION_MISMATCH = int(DisconnectReason.VERSION_MISMATCH)
+DISCONNECT_SESSION_END = int(DisconnectReason.SESSION_END)
+
+# Struct aliases
+CTRL_HDR = struct.Struct(_CTRL_HDR_FMT)
+CTRL_HDR_SIZE = _CTRL_HDR_SIZE
+HELLO_FMT = struct.Struct(_HELLO_FMT)
+WELCOME_BASE_FMT = struct.Struct(_WELCOME_HDR_FMT)
+CHANNEL_ENTRY_FMT = struct.Struct(_CHANNEL_ENTRY_FMT)
+CHANNEL_ENTRY_SIZE = _CHANNEL_ENTRY_SIZE
+PING_FMT = struct.Struct(_PING_FMT)
+DISCONNECT_FMT = struct.Struct(_DISCONNECT_FMT)
+UDP_HDR_FMT = struct.Struct("<4sIIdH")
+UDP_HDR_SIZE = UDP_HDR_FMT.size
+UDP_CH_FMT = struct.Struct("<Hd")
+UDP_CH_SIZE = UDP_CH_FMT.size
+DISCOVERY_FMT = struct.Struct(_DISCOVERY_FMT)
+DISCOVERY_SIZE = _DISCOVERY_SIZE
+
+
+def pack_ctrl(msg_type: int, payload: bytes) -> bytes:
+    """Serialize a TCP control message (header + payload)."""
+    return CTRL_HDR.pack(STREAM_MAGIC, len(payload), msg_type) + payload
+
+
+def pack_hello(client_name: str = "TeleMU-engineer") -> bytes:
+    """Build a HELLO message using the encode_hello API."""
+    return encode_hello(client_name)
+
+
+def pack_subscribe(channel_count: int, subscribe_all: bool = True) -> bytes:
+    """Build a SUBSCRIBE message (bitfield-style, for the async client)."""
+    if subscribe_all:
+        channel_ids = list(range(channel_count))
+    else:
+        channel_ids = []
+    return encode_subscribe(channel_ids)
+
+
+def pack_pong(timestamp: float) -> bytes:
+    """Build a PONG response."""
+    return encode_pong(timestamp)
+
+
+def parse_udp_frame(data: bytes) -> tuple[int, int, float, dict[str, float]] | None:
+    """Parse a UDP telemetry frame (simplified interface for StreamingClient).
+
+    Returns ``(session_id, sequence, timestamp, channels)`` or ``None`` if
+    invalid.  Channel keys are string representations of channel IDs.
+    """
+    if len(data) < UDP_HDR_SIZE:
+        return None
+    magic = data[:4]
+    if magic != STREAM_MAGIC:
+        return None
+    try:
+        frame = decode_telemetry_frame(data)
+    except ValueError:
+        return None
+    # Convert int keys to string keys for backward compatibility
+    channels: dict[str, float] = {str(k): v for k, v in frame.channels.items()}
+    return frame.session_id, frame.sequence, frame.timestamp, channels
+
+
+def parse_discovery(data: bytes) -> dict | None:
+    """Parse a UDP discovery packet (simplified interface).
+
+    Returns a dict with driver info or ``None`` if invalid.
+    """
+    try:
+        return decode_discovery(data)
+    except ValueError:
+        return None
