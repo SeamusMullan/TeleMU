@@ -1,20 +1,32 @@
-"""Telemetry streaming client — engineer-side receiver.
+"""StreamClient — engineer-side streaming client.
 
-Implements the engineer side of the TeleMU streaming protocol v2 (see
-``docs/docs/streaming/protocol.md``).
+Responsibilities
+----------------
+* Listens for DISCOVERY_ANNOUNCE broadcasts on UDP :9099.
+* Connects via TCP to the driver's control port for handshake.
+* Receives UDP telemetry frames on a dedicated local port.
+* Emits decoded :class:`~telemu.streaming.protocol.TelemetryFrame` objects
+  via a callback.
 
-Features
---------
-- UDP discovery listener for zero-config driver detection
-- TCP control channel: HELLO / WELCOME / SUBSCRIBE / PING-PONG
-- UDP data channel: binary telemetry frames with per-channel float64 values
-- Sequence-number tracking for graceful packet-loss handling (no retransmit)
-- 100 ms jitter buffer to smooth network jitter before handing data to dashboard
-- Exponential back-off reconnect on disconnect (1 s → 30 s)
+Thread model
+------------
+``StreamClient`` owns two background threads once connected:
+- *control thread*: reads control messages from the TCP socket.
+- *telemetry thread*: receives and decodes UDP telemetry frames.
 
-The client feeds received telemetry frames directly into the shared
-:class:`~telemu.ws.manager.ConnectionManager` broadcast, so the existing
-WebSocket layer distributes frames to the dashboard without extra wiring.
+Usage
+-----
+::
+
+    def on_frame(frame):
+        print(frame.timestamp, frame.channels)
+
+    client = StreamClient(on_frame=on_frame)
+    drivers = client.discover(timeout=3.0)
+    if drivers:
+        client.connect(drivers[0]["ip"], drivers[0]["tcp_port"])
+    # ...later:
+    client.disconnect()
 """
 
 from __future__ import annotations

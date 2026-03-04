@@ -79,6 +79,16 @@ export interface HealthResponse {
   active_clients: number;
 }
 
+export interface StreamingStatus {
+  running: boolean;
+  clients_connected: number;
+  data_rate_bps: number;
+  host: string;
+  discovery_port: number;
+  telemetry_port: number;
+  control_port: number;
+}
+
 // Convert .tmu → DuckDB
 export interface TmuFileInfo {
   filename: string;
