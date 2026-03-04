@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "ci": "bun run lint && bun run build && bun run test",
     "lint": "eslint src/",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "vite build && electron-builder"
@@ -25,7 +26,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@eslint/js": "^9.0.0",
     "@tailwindcss/vite": "^4.0.0",
     "@testing-library/react": "^16.0.0",
     "@types/react": "^19.0.0",
