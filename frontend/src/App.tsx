@@ -4,12 +4,14 @@ import AnalyzerPage from "./pages/AnalyzerPage";
 import ExplorerPage from "./pages/ExplorerPage";
 import ConvertPage from "./pages/ConvertPage";
 import SettingsPage from "./pages/SettingsPage";
+import StreamingPage from "./pages/StreamingPage";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard" },
   { to: "/explorer", label: "Explorer" },
   { to: "/analyzer", label: "Analyzer" },
   { to: "/convert", label: "Convert" },
+  { to: "/streaming", label: "Streaming" },
   { to: "/settings", label: "Settings" },
 ] as const;
 
@@ -46,6 +48,7 @@ export default function App() {
             <Route path="/explorer" element={<ExplorerPage />} />
             <Route path="/analyzer" element={<AnalyzerPage />} />
             <Route path="/convert" element={<ConvertPage />} />
+            <Route path="/streaming" element={<StreamingPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </main>

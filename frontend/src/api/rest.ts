@@ -10,7 +10,9 @@ import type {
   TmuFileInfo,
   ConvertRequest,
   ConvertResponse,
-  StreamingStatus,
+  StreamingClientStatus,
+  StreamConnectRequest,
+  StreamingServerStatus,
 } from "./types";
 
 const BASE = "/api";
@@ -52,7 +54,15 @@ export const api = {
   query: (sql: string) => post<QueryResult>("/query", { sql }),
   tmuFiles: () => get<TmuFileInfo[]>("/convert/tmu-files"),
   convert: (req: ConvertRequest) => post<ConvertResponse>("/convert", req),
-  streamingStatus: () => get<StreamingStatus>("/streaming/status"),
-  streamingStart: () => post<StreamingStatus>("/streaming/start", {}),
-  streamingStop: () => post<StreamingStatus>("/streaming/stop", {}),
+
+  // Streaming client (engineer side)
+  streamingClientStatus: () => get<StreamingClientStatus>("/streaming/client/status"),
+  streamingConnect: (req: StreamConnectRequest) =>
+    post<StreamingClientStatus>("/streaming/client/connect", req),
+  streamingDisconnect: () => post<StreamingClientStatus>("/streaming/client/disconnect", {}),
+
+  // Streaming server (driver side)
+  streamingStatus: () => get<StreamingServerStatus>("/streaming/status"),
+  streamingStart: () => post<StreamingServerStatus>("/streaming/start", {}),
+  streamingStop: () => post<StreamingServerStatus>("/streaming/stop", {}),
 };

@@ -114,3 +114,30 @@ export interface ConvertResponse {
   total: number;
   converted: number;
 }
+
+// Streaming client (engineer side)
+export interface StreamingClientStatus {
+  state: "idle" | "connecting" | "connected" | "reconnecting";
+  host: string;
+  port: number;
+  rx_frames: number;
+  lost_packets: number;
+  channel_count: number;
+}
+
+export interface StreamConnectRequest {
+  host: string;
+  port: number;
+}
+
+// Streaming server (driver side)
+export interface StreamingServerStatus {
+  running: boolean;
+  clients_connected: number;
+  data_rate_bps: number;
+  host: string;
+  discovery_port: number;
+  telemetry_port: number;
+  control_port: number;
+}
+

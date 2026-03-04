@@ -13,6 +13,7 @@ from telemu import __version__
 from telemu.config import settings
 from telemu.lovense import LovenseClient
 from telemu.reader import DemoReader, TelemetryFrame, TelemetryReader
+from telemu.streaming import StreamingClient
 from telemu.streaming import TelemetryStreamer
 from telemu.ws.manager import ConnectionManager
 from telemu.ws.router import manager as ws_manager
@@ -56,6 +57,9 @@ async def lifespan(app: FastAPI):
     app.state.ws_manager = ws_manager
     app.state.db_conn = None
 
+    # Create streaming client (engineer side)
+    app.state.streaming_client = StreamingClient(ws_manager)
+
     # Create streaming server (not started yet; user starts via UI/API)
     streamer = TelemetryStreamer(
         host=settings.streaming_host,
@@ -77,12 +81,19 @@ async def lifespan(app: FastAPI):
     reader.subscribe(lambda frame: _schedule_broadcast(app, frame))
     reader.subscribe(streamer.on_frame)
     await reader.start()
+
+    # Auto-connect streaming client if configured
+    if settings.streaming_connect_host:
+        await app.state.streaming_client.start(
+            settings.streaming_connect_host, settings.streaming_connect_port
+        )
+
     logger.info("TeleMU v%s started (demo=%s)", __version__, settings.demo_mode)
 
     yield
 
     await reader.stop()
-    await streamer.stop()
+    await app.state.streaming_client.stop()
     if app.state.db_conn is not None:
         try:
             app.state.db_conn.close()
