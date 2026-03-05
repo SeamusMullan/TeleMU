@@ -5,7 +5,7 @@ import { registerWidget, type WidgetProps } from "../registry";
 import StatusRow from "../../components/dashboard/StatusRow";
 import { useTelemetryStore } from "../../stores/telemetryStore";
 
-const StatusRowWrapper = memo(function StatusRowWrapper() {
+export const StatusRowWrapper = memo(function StatusRowWrapper() {
   const status = useTelemetryStore((s) => s.status);
   return <StatusRow status={status} />;
 });

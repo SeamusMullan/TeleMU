@@ -4,7 +4,7 @@ import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import SchemaBrowser from "../../components/explorer/SchemaBrowser";
 
-const SchemaBrowserWrapper = memo(function SchemaBrowserWrapper() {
+export const SchemaBrowserWrapper = memo(function SchemaBrowserWrapper() {
   return <SchemaBrowser />;
 });
 

@@ -3,7 +3,7 @@
 import { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 
-const TextLabelWidget = memo(function TextLabelWidget({ config }: WidgetProps) {
+export const TextLabelWidget = memo(function TextLabelWidget({ config }: WidgetProps) {
   const text = (config.text as string) || "Label";
   const fontSize = (config.fontSize as number) || 14;
 

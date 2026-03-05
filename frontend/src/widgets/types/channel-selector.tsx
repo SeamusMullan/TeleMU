@@ -4,7 +4,7 @@ import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import ChannelSelector from "../../components/analyzer/ChannelSelector";
 
-const ChannelSelectorWrapper = memo(function ChannelSelectorWrapper() {
+export const ChannelSelectorWrapper = memo(function ChannelSelectorWrapper() {
   return <ChannelSelector />;
 });
 

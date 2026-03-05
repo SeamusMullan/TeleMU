@@ -4,7 +4,7 @@ import { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import TimeSeriesChart from "../../components/analyzer/TimeSeriesChart";
 
-const EChartWrapper = memo(function EChartWrapper({ width, height }: WidgetProps) {
+export const EChartWrapper = memo(function EChartWrapper({ width, height }: WidgetProps) {
   return <TimeSeriesChart width={width} height={height} />;
 });
 

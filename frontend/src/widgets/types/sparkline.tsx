@@ -5,7 +5,7 @@ import { registerWidget, type WidgetProps } from "../registry";
 import SparkStrip from "../../components/dashboard/SparkStrip";
 import { useTelemetryStore } from "../../stores/telemetryStore";
 
-const SparklineWidgetWrapper = memo(function SparklineWidgetWrapper({ config }: WidgetProps) {
+export const SparklineWidgetWrapper = memo(function SparklineWidgetWrapper({ config }: WidgetProps) {
   const channel = config.channel as string;
   const dynamicMaxChannel = config.dynamicMaxChannel as string | undefined;
 

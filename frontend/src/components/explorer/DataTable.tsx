@@ -20,6 +20,7 @@ interface TableData {
 const columnHelper = createColumnHelper<unknown[]>();
 
 export default function DataTable() {
+  "use no memo";
   const { tables, activeSession } = useSessionStore();
   const [selectedTable, setSelectedTable] = useState<string>("");
   const [data, setData] = useState<TableData | null>(null);
@@ -64,6 +65,7 @@ export default function DataTable() {
     );
   }, [data]);
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: data?.rows ?? [],
     columns,
