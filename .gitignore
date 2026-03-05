@@ -25,6 +25,7 @@ node_modules/
 frontend/dist/
 frontend/.vite/
 *.tsbuildinfo
+frontend/package-lock.json
 
 # Tauri
 frontend/src-tauri/target/

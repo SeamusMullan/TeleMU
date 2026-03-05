@@ -120,7 +120,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Stage backend exe as Tauri resource
         shell: bash
