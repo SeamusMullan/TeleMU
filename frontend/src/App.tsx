@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { HashRouter, Routes, Route, NavLink } from "react-router";
+import { TooltipProvider } from "./components/ui";
 import AlertBanner from "./components/alerts/AlertBanner";
 import AlertFlash from "./components/alerts/AlertFlash";
 import PageSkeleton from "./components/common/PageSkeleton";
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
 export default function App() {
   return (
     <HashRouter>
+      <TooltipProvider delayDuration={300}>
       <div className="flex h-screen flex-col">
         {/* Navigation bar */}
         <nav className="flex items-center gap-1 border-b border-neutral-800 bg-neutral-900 px-4">
@@ -69,6 +71,7 @@ export default function App() {
         <AlertFlash />
         <AlertBanner />
       </div>
+      </TooltipProvider>
     </HashRouter>
   );
 }
