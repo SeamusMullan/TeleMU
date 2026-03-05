@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /**
- * Tests for the tray integration preload API surface.
- * Since Electron APIs are not available in jsdom, we mock window.telemu
+ * Tests for the tray integration bridge API surface.
+ * Since Tauri APIs are not available in jsdom, we mock window.telemu
  * to verify that renderer code can interact with the tray API correctly.
  */
 
-describe("tray preload API", () => {
+describe("tray bridge API", () => {
   beforeEach(() => {
-    // Mock the preload-exposed API on window
+    // Mock the Tauri-bridge-exposed API on window
     window.telemu = {
       platform: "linux",
-      isElectron: true,
+      isTauri: true,
       updateTrayStatus: vi.fn(),
       notify: vi.fn(),
       setMinimizeToTray: vi.fn(),

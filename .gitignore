@@ -26,9 +26,9 @@ frontend/dist/
 frontend/.vite/
 *.tsbuildinfo
 
-# Electron
-frontend/out/
-frontend/dist-electron/
+# Tauri
+frontend/src-tauri/target/
+frontend/src-tauri/gen/
 
 # IDE
 .idea/
