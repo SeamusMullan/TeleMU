@@ -1,4 +1,0 @@
-LMUPI/.gitignore
-LMUPI/lmupi/sharedmem/tmu_serializer.py
-LMUPI/tests/__init__.py
-LMUPI/tests/test_tmu_serializer.py
