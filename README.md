@@ -12,7 +12,7 @@ TeleMU is a telemetry analysis platform for [Le Mans Ultimate](https://www.leman
 
 ## Installation (Windows — pre-built)
 
-Download the latest `telemu.exe` from the [Releases page](https://github.com/SeamusMullan/TeleMU/releases/latest) and run it directly — no Python installation required.
+Download the latest installer executable from the [Releases page](https://github.com/SeamusMullan/TeleMU/releases/latest) and run it directly — no Python installation required.
 
 ## Tech Stack
 
