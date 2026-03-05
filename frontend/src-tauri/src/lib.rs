@@ -69,17 +69,6 @@ fn update_tray_status<R: Runtime>(
     }
 }
 
-/// Renderer calls this to show a native OS notification.
-#[tauri::command]
-fn show_notification(title: String, body: String) {
-    #[cfg(desktop)]
-    {
-        // Notification is fired via the plugin; callers should use the JS
-        // `isPermissionGranted` / `sendNotification` helpers from the renderer.
-        let _ = (title, body);
-    }
-}
-
 /// Renderer requests to toggle minimize-to-tray behaviour (no-op in Tauri;
 /// handled by the close-requested handler set up in `setup`).
 #[tauri::command]
@@ -95,26 +84,36 @@ fn set_start_minimized(_value: bool) {}
 // ---------------------------------------------------------------------------
 
 #[cfg(not(debug_assertions))]
-fn spawn_backend() {
-    // In production the backend exe sits next to the Tauri binary.
-    if let Ok(mut exe_dir) = std::env::current_exe() {
-        exe_dir.pop(); // remove binary name, keep directory
-
-        #[cfg(target_os = "windows")]
-        let backend_name = "telemu-backend.exe";
-        #[cfg(not(target_os = "windows"))]
-        let backend_name = "telemu-backend";
-
-        let backend_path = exe_dir.join(backend_name);
-        if backend_path.exists() {
-            let _ = std::process::Command::new(&backend_path)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn();
-        } else {
-            eprintln!("Backend executable not found at {:?}", backend_path);
+fn spawn_backend(app: &AppHandle) {
+    // In production, the backend exe is bundled as a resource next to the app.
+    let resource_dir = match app.path().resource_dir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            eprintln!("Failed to get resource directory: {e}");
+            // Fall back to the directory containing the Tauri binary
+            if let Ok(mut exe) = std::env::current_exe() {
+                exe.pop();
+                exe
+            } else {
+                return;
+            }
         }
+    };
+
+    #[cfg(target_os = "windows")]
+    let backend_name = "telemu-backend.exe";
+    #[cfg(not(target_os = "windows"))]
+    let backend_name = "telemu-backend";
+
+    let backend_path = resource_dir.join(backend_name);
+    if backend_path.exists() {
+        let _ = std::process::Command::new(&backend_path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    } else {
+        eprintln!("Backend executable not found at {:?}", backend_path);
     }
 }
 
@@ -154,12 +153,11 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_shell::init())
         .manage(tray_status)
         .setup(|app| {
             // Spawn backend sidecar in production builds only
             #[cfg(not(debug_assertions))]
-            spawn_backend();
+            spawn_backend(app.handle());
 
             // Build system tray
             let status = TrayStatus::default();
@@ -225,7 +223,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             update_tray_status,
-            show_notification,
             set_minimize_to_tray,
             set_start_minimized,
         ])

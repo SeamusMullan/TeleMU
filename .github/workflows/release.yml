@@ -124,13 +124,18 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Stage backend exe as Tauri sidecar
+      - name: Stage backend exe as Tauri resource
         shell: bash
-        run: cp backend/dist/telemu.exe "frontend/src-tauri/telemu-backend.exe"
+        run: |
+          mkdir -p frontend/backend-bin
+          cp backend/dist/telemu.exe frontend/backend-bin/telemu-backend.exe
 
       - name: Build Tauri app (Windows)
         working-directory: frontend
-        run: npm run tauri:build -- --target x86_64-pc-windows-msvc
+        run: >
+          npx tauri build
+          --target x86_64-pc-windows-msvc
+          --config "{\"bundle\":{\"resources\":{\"../backend-bin/telemu-backend.exe\":\"telemu-backend.exe\"}}}"
 
       # -- Inno Setup installer --
       - name: Extract version

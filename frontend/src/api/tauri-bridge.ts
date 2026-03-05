@@ -49,19 +49,17 @@ export async function initTauriBridge(): Promise<void> {
     },
 
     onToggleRecording: (callback) => {
-      let unlisten: (() => void) | null = null;
-      listen("tray://toggle-recording", () => callback()).then((fn) => {
-        unlisten = fn;
-      });
-      return () => { unlisten?.(); };
+      const unlistenPromise = listen("tray://toggle-recording", () => callback());
+      return () => {
+        unlistenPromise.then((fn) => fn()).catch(console.error);
+      };
     },
 
     onToggleConnection: (callback) => {
-      let unlisten: (() => void) | null = null;
-      listen("tray://toggle-connection", () => callback()).then((fn) => {
-        unlisten = fn;
-      });
-      return () => { unlisten?.(); };
+      const unlistenPromise = listen("tray://toggle-connection", () => callback());
+      return () => {
+        unlistenPromise.then((fn) => fn()).catch(console.error);
+      };
     },
   };
 }
