@@ -4,7 +4,7 @@ import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import StreamingPanel from "../../components/dashboard/StreamingPanel";
 
-const StreamingWrapper = memo(function StreamingWrapper() {
+export const StreamingWrapper = memo(function StreamingWrapper() {
   return <StreamingPanel />;
 });
 

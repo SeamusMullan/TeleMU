@@ -4,7 +4,7 @@ import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import SessionPicker from "../../components/explorer/SessionPicker";
 
-const SessionPickerWrapper = memo(function SessionPickerWrapper() {
+export const SessionPickerWrapper = memo(function SessionPickerWrapper() {
   return <SessionPicker />;
 });
 

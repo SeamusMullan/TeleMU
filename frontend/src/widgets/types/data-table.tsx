@@ -4,7 +4,7 @@ import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import DataTable from "../../components/explorer/DataTable";
 
-const DataTableWrapper = memo(function DataTableWrapper() {
+export const DataTableWrapper = memo(function DataTableWrapper() {
   return <DataTable />;
 });
 

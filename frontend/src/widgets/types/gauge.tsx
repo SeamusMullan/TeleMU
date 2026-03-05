@@ -5,7 +5,7 @@ import { registerWidget, type WidgetProps } from "../registry";
 import GaugeWidget from "../../components/dashboard/GaugeWidget";
 import { useTelemetryStore } from "../../stores/telemetryStore";
 
-const GaugeWidgetWrapper = memo(function GaugeWidgetWrapper({ config }: WidgetProps) {
+export const GaugeWidgetWrapper = memo(function GaugeWidgetWrapper({ config }: WidgetProps) {
   const channel = config.channel as string;
   const dynamicMaxChannel = config.dynamicMaxChannel as string | undefined;
 

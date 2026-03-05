@@ -5,7 +5,7 @@ import { registerWidget, type WidgetProps } from "../registry";
 import LapInfo from "../../components/dashboard/LapInfo";
 import { useTelemetryStore } from "../../stores/telemetryStore";
 
-const LapInfoWrapper = memo(function LapInfoWrapper() {
+export const LapInfoWrapper = memo(function LapInfoWrapper() {
   const lapInfo = useTelemetryStore((s) => s.lapInfo);
   return <LapInfo lapInfo={lapInfo} />;
 });

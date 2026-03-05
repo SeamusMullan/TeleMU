@@ -4,7 +4,7 @@ import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import RecordingControls from "../../components/dashboard/RecordingControls";
 
-const RecordingWrapper = memo(function RecordingWrapper() {
+export const RecordingWrapper = memo(function RecordingWrapper() {
   return <RecordingControls />;
 });
 

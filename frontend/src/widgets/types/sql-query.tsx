@@ -4,7 +4,7 @@ import React, { memo } from "react";
 import { registerWidget, type WidgetProps } from "../registry";
 import SqlQuery from "../../components/explorer/SqlQuery";
 
-const SqlQueryWrapper = memo(function SqlQueryWrapper() {
+export const SqlQueryWrapper = memo(function SqlQueryWrapper() {
   return <SqlQuery />;
 });
 
