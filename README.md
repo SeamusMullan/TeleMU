@@ -66,6 +66,8 @@ cd docs
 uv run mkdocs serve
 ```
 
+Backend documentation is available at `localhost:8000/docs` or `localhost:8000/redoc`
+
 Key sections:
 - [Architecture Overview](docs/docs/architecture/overview.md)
 - [Shared Memory](docs/docs/shared-memory/overview.md)
