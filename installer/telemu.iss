@@ -1,9 +1,13 @@
 ; TeleMU Inno Setup Script
-; Packages the Electron app (with bundled backend) into a Windows installer.
+; Packages the Tauri app (with bundled backend) into a Windows installer.
 ; Build with: ISCC /DAppVersion=x.y.z telemu.iss
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
+#endif
+
+#ifndef TauriTarget
+  #define TauriTarget "x86_64-pc-windows-msvc"
 #endif
 
 [Setup]
@@ -34,8 +38,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; The entire unpacked electron-builder output
-Source: "..\frontend\dist\win-unpacked\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; The Tauri application executable
+Source: "..\frontend\src-tauri\target\{#TauriTarget}\release\telemu.exe"; DestDir: "{app}"; DestName: "TeleMU.exe"; Flags: ignoreversion
+; The bundled backend binary
+Source: "..\frontend\backend-bin\telemu-backend.exe"; DestDir: "{app}"; DestName: "telemu-backend.exe"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\TeleMU"; Filename: "{app}\TeleMU.exe"
