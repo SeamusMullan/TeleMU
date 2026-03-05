@@ -3,7 +3,7 @@
 interface Window {
   telemu?: {
     platform: string;
-    isElectron: boolean;
+    isTauri: boolean;
 
     /** Update tray icon/menu to reflect current status. */
     updateTrayStatus: (status: { connected: boolean; recording: boolean }) => void;

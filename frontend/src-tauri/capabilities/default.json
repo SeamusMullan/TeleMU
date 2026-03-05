@@ -1,0 +1,9 @@
+{
+  "identifier": "default",
+  "description": "Default capability for the main TeleMU window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "notification:default"
+  ]
+}
