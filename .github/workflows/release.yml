@@ -132,6 +132,7 @@ jobs:
 
       - name: Build Tauri app (Windows)
         working-directory: frontend
+        shell: bash
         run: >
           npx tauri build
           --target x86_64-pc-windows-msvc
