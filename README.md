@@ -20,41 +20,13 @@ Download the latest `telemu.exe` from the [Releases page](https://github.com/Sea
 |-------|-----------|
 | Backend | Python 3.13, FastAPI, uvicorn, WebSocket |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS |
-| Desktop | Electron |
+| Desktop | Tauri 2 |
 | Data | DuckDB (read-only `.duckdb` files) |
 | Analysis | NumPy, SciPy |
 | Charting | ECharts |
 | Live Telemetry | ctypes shared memory (LMU `SharedMemoryInterface`) |
 | State | Zustand |
 
-## Project Structure
-
-```
-TeleMU/
-├── backend/                # Python FastAPI backend (uv project)
-│   ├── telemu/
-│   │   ├── main.py         # FastAPI app, lifespan, CORS
-│   │   ├── config.py       # Pydantic Settings
-│   │   ├── reader.py       # Async telemetry reader (~60Hz)
-│   │   ├── models.py       # Pydantic models (API + WebSocket)
-│   │   ├── sharedmem/      # LMU shared memory (from v1)
-│   │   ├── ws/             # WebSocket manager + protocol
-│   │   ├── api/            # REST endpoints
-│   │   ├── db/             # DuckDB gateway
-│   │   ├── recording/      # .tmu recording (planned)
-│   │   ├── streaming/      # LAN streaming (planned)
-│   │   └── engineer/       # Race engineer tools (planned)
-│   └── tests/
-├── frontend/               # React + TypeScript + Electron
-│   ├── src/
-│   │   ├── api/            # REST + WebSocket clients
-│   │   ├── stores/         # Zustand state management
-│   │   ├── pages/          # Dashboard, Explorer, Analyzer, Settings
-│   │   ├── components/     # Gauges, sparklines, charts
-│   │   └── hooks/          # useTelemetry, useSession
-│   └── electron/           # Electron main process
-└── docs/                   # MkDocs documentation
-```
 
 ## Getting Started
 
@@ -84,20 +56,6 @@ npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173). The Vite dev server proxies `/api` and `/ws` to the backend at `:8000`.
-
-### Electron
-
-```bash
-cd frontend
-npm run electron:dev
-```
-
-### Tests
-
-```bash
-cd backend && uv run pytest
-cd frontend && npm run test
-```
 
 ## Documentation
 
