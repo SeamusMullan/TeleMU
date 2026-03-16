@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 import numpy as np
 import pytest
@@ -23,11 +24,11 @@ from telemu.recording.tmu_ndjson import TmuFrame, TmuHeader
 def _make_frames(
     rate_hz: float,
     duration_s: float,
-    channels: dict[str, callable] | None = None,
+    channels: dict[str, Callable[[float], float]] | None = None,
 ) -> list[TmuFrame]:
     """Generate synthetic frames at a given rate.
 
-    *channels* maps channel name → f(t) producing a value for time *t*.
+    ``channels`` maps channel name → f(t) producing a value for time ``t``.
     """
     if channels is None:
         channels = {
