@@ -116,14 +116,18 @@ export default function DataTable() {
       {/* Virtualized table */}
       <div ref={parentRef} className="flex-1 overflow-auto">
         {data && (
-          <table className="w-full border-collapse text-xs">
+          <table className="w-full min-w-max border-collapse text-xs">
             <thead className="sticky top-0 z-10 bg-neutral-800">
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id}>
-                  {hg.headers.map((header) => (
+                  {hg.headers.map((header, colIdx) => (
                     <th
                       key={header.id}
-                      className="border-b border-neutral-700 px-2 py-1.5 text-left font-mono font-bold text-neutral-300"
+                      className={`border-b border-neutral-700 px-2 py-1.5 text-left font-mono font-bold text-neutral-300 ${
+                        colIdx === 0
+                          ? "sticky left-0 z-20 bg-neutral-800"
+                          : ""
+                      }`}
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
                     </th>
@@ -143,11 +147,15 @@ export default function DataTable() {
               {virtualizer.getVirtualItems().map((virtualRow) => {
                 const row = rows[virtualRow.index]!;
                 return (
-                  <tr key={row.id} className="hover:bg-neutral-800/50">
-                    {row.getVisibleCells().map((cell) => (
+                  <tr key={row.id} className="group hover:bg-neutral-800/50">
+                    {row.getVisibleCells().map((cell, colIdx) => (
                       <td
                         key={cell.id}
-                        className="border-b border-neutral-800/50 px-2 py-1 font-mono text-neutral-400"
+                        className={`border-b border-neutral-800/50 px-2 py-1 font-mono text-neutral-400 ${
+                          colIdx === 0
+                            ? "sticky left-0 z-10 bg-neutral-900 group-hover:bg-neutral-800/80"
+                            : ""
+                        }`}
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>

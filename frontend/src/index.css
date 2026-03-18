@@ -154,3 +154,40 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+
+/* Touch targets — ensure min 44×44px on coarse-pointer (touch) devices */
+@media (pointer: coarse) {
+  button,
+  a,
+  [role="button"],
+  [role="link"],
+  select {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Touch-friendly checkbox/radio tap areas via their label wrappers */
+  label:has(input[type="checkbox"]),
+  label:has(input[type="radio"]) {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+}
+
+/* Tablet readability — slightly larger base text on mid-sized screens */
+@media (min-width: 768px) and (max-width: 1199px) {
+  :root {
+    --text-xs: 0.8rem;
+    --text-sm: 0.9375rem;
+    --text-base: 1.0625rem;
+  }
+}
+
+/* Orientation support — compact nav height in landscape on small devices */
+@media (max-height: 480px) and (orientation: landscape) {
+  nav {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+}

@@ -76,7 +76,7 @@ function RuleRow({ rule, profiles, now }: { rule: AlertRule; profiles: AlertProf
       {/* Expanded detail editor */}
       {expanded && (
         <div className="border-t border-neutral-800 px-4 py-3 space-y-3">
-          <div className="grid grid-cols-2 gap-3 text-xs text-neutral-300 sm:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 text-xs text-neutral-300 sm:grid-cols-2 md:grid-cols-4">
             {/* Name */}
             <label className="flex flex-col gap-1">
               Name
@@ -243,7 +243,7 @@ function NewRuleForm({ profiles, onDone }: { profiles: AlertProfile[]; onDone: (
     <form onSubmit={handleSubmit} className="rounded-lg border border-neutral-700 bg-neutral-900 p-4 space-y-3">
       <h3 className="text-sm font-bold text-neutral-200">New Alert Rule</h3>
 
-      <div className="grid grid-cols-2 gap-3 text-xs text-neutral-300 sm:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 text-xs text-neutral-300 sm:grid-cols-2 md:grid-cols-4">
         <label className="flex flex-col gap-1">
           Name *
           <input
