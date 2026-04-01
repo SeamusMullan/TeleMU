@@ -1,6 +1,6 @@
 /** Generic widget page renderer — reads layout from store, renders grid. */
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Responsive, WidthProvider, type Layout } from "react-grid-layout";
 import { useLayoutStore } from "../stores/layoutStore";
 import { DEFAULT_PAGES } from "./defaults";
@@ -16,6 +16,7 @@ export default function WidgetPage({ pageId }: WidgetPageProps) {
   const initPageIfMissing = useLayoutStore((s) => s.initPageIfMissing);
   const editMode = useLayoutStore((s) => s.editMode);
   const updateGridLayouts = useLayoutStore((s) => s.updateGridLayouts);
+  const [currentBreakpoint, setCurrentBreakpoint] = useState<"lg" | "md" | "sm">("lg");
 
   // Ensure page exists with defaults
   const defaultPage = DEFAULT_PAGES[pageId];
@@ -55,6 +56,11 @@ export default function WidgetPage({ pageId }: WidgetPageProps) {
     );
   }
 
+  // Render only widgets present in the current breakpoint's layout so that
+  // secondary widgets (e.g. streaming_1) can be hidden on small screens by
+  // simply omitting them from the sm layout in defaults.ts.
+  const activeLayouts = page.gridLayouts[currentBreakpoint] ?? page.gridLayouts.lg;
+
   return (
     <ResponsiveGridLayout
       className="layout"
@@ -66,10 +72,11 @@ export default function WidgetPage({ pageId }: WidgetPageProps) {
       isResizable={editMode && !page.locked}
       draggableHandle=".drag-handle"
       onLayoutChange={handleLayoutChange}
+      onBreakpointChange={(bp) => setCurrentBreakpoint(bp as "lg" | "md" | "sm")}
       compactType="vertical"
       margin={[8, 8]}
     >
-      {page.gridLayouts.lg.map((layout) => {
+      {activeLayouts.map((layout) => {
         const widget = widgetMap.get(layout.i);
         if (!widget) return <div key={layout.i} />;
         return (

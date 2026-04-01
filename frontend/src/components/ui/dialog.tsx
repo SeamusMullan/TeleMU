@@ -40,8 +40,13 @@ export function DialogContent({
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2",
-          "rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-1)] p-6 shadow-[var(--shadow-lg)]",
+          // Mobile: full-screen; sm+: centered overlay
+          "fixed inset-0 z-50 w-full",
+          "sm:inset-auto sm:left-1/2 sm:top-1/2 sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2",
+          "rounded-none sm:rounded-[var(--radius-lg)]",
+          "border-0 sm:border sm:border-[var(--color-border)]",
+          "bg-[var(--color-surface-1)] p-6 shadow-[var(--shadow-lg)]",
+          "overflow-y-auto",
           "data-[state=open]:animate-[content-show_var(--duration-normal)_ease-out]",
           "data-[state=closed]:animate-[content-hide_var(--duration-normal)_ease-in]",
           "focus:outline-none",

@@ -88,7 +88,7 @@ const dashboardLayouts: { lg: Layout[]; md: Layout[]; sm: Layout[] } = {
     { i: "spark_fuel", x: 0, y: 20, w: 6, h: 2, minW: 3, minH: 2 },
     { i: "spark_brake_temp", x: 0, y: 22, w: 6, h: 2, minW: 3, minH: 2 },
     { i: "lap_info_1", x: 0, y: 24, w: 6, h: 4, minW: 2, minH: 3 },
-    { i: "streaming_1", x: 0, y: 28, w: 6, h: 4, minW: 2, minH: 3 },
+    // streaming_1 omitted on sm — secondary widget hidden on small screens
   ],
 };
 
