@@ -40,6 +40,8 @@ class TmuHeader:
     vehicle: str = ""
     date: str = ""
     channels: list[str] = field(default_factory=list)
+    sample_rate_hz: int = 0
+    original_sample_rate_hz: float = 0.0
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -51,12 +53,19 @@ class TmuHeader:
             "date": self.date,
             "channels": self.channels,
         }
+        if self.sample_rate_hz:
+            d["sample_rate_hz"] = self.sample_rate_hz
+        if self.original_sample_rate_hz:
+            d["original_sample_rate_hz"] = self.original_sample_rate_hz
         d.update(self.extra)
         return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> TmuHeader:
-        known = {"track", "session_type", "driver", "vehicle", "date", "channels"}
+        known = {
+            "track", "session_type", "driver", "vehicle", "date", "channels",
+            "sample_rate_hz", "original_sample_rate_hz",
+        }
         extra = {k: v for k, v in d.items() if k not in known}
         return cls(
             track=d.get("track", ""),
@@ -65,6 +74,8 @@ class TmuHeader:
             vehicle=d.get("vehicle", ""),
             date=d.get("date", ""),
             channels=d.get("channels", []),
+            sample_rate_hz=int(d.get("sample_rate_hz", 0)),
+            original_sample_rate_hz=float(d.get("original_sample_rate_hz", 0.0)),
             extra=extra,
         )
 
