@@ -7,10 +7,9 @@ from fastapi import APIRouter, HTTPException, Request
 from telemu.lovense import (
     LovenseClient,
     LovenseClientError,
-    LovenseConnectRequest,
     LovenseConnectionStatus,
     LovenseFunctionRequest,
-    LovenseLanResolveRequest,
+    LovenseLocalAppInfo,
 )
 
 router = APIRouter(prefix="/lovense", tags=["lovense"])
@@ -28,21 +27,24 @@ async def status(request: Request) -> LovenseConnectionStatus:
     return LovenseConnectionStatus(**_client(request).status())
 
 
-@router.post("/connect", response_model=LovenseConnectionStatus)
-async def connect(body: LovenseConnectRequest, request: Request) -> LovenseConnectionStatus:
+@router.post("/connect-local", response_model=LovenseConnectionStatus)
+async def connect_local(request: Request) -> LovenseConnectionStatus:
     client = _client(request)
-    client.configure(domain=body.domain, https_port=body.https_port)
+    try:
+        await client.connect_local()
+    except LovenseClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
     return LovenseConnectionStatus(**client.status())
 
 
-@router.post("/resolve-lan")
-async def resolve_lan(body: LovenseLanResolveRequest, request: Request) -> dict:
+@router.get("/detect-local", response_model=LovenseLocalAppInfo)
+async def detect_local(request: Request) -> LovenseLocalAppInfo:
     client = _client(request)
     try:
-        result = await client.resolve_lan(token=body.token, uid=body.uid)
+        result = await client.detect_local()
     except LovenseClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
-    return result
+    return LovenseLocalAppInfo(**result)
 
 
 @router.post("/get-toys")

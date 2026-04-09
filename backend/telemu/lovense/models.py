@@ -1,18 +1,8 @@
-"""Pydantic models for Lovense API integration."""
+"""Pydantic models for local Lovense desktop integration."""
 
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
-
-
-class LovenseConnectRequest(BaseModel):
-    domain: str = Field(min_length=1, description="Lovense LAN domain or host")
-    https_port: int = Field(default=30010, ge=1, le=65535)
-
-
-class LovenseLanResolveRequest(BaseModel):
-    token: str = Field(min_length=1, description="Lovense developer token")
-    uid: str = Field(min_length=1, description="Lovense user id")
 
 
 class LovenseFunctionRequest(BaseModel):
@@ -29,4 +19,11 @@ class LovenseConnectionStatus(BaseModel):
     domain: str | None = None
     https_port: int | None = None
     verify_tls: bool
+
+
+class LovenseLocalAppInfo(BaseModel):
+    domain: str
+    https_port: int
+    online: bool = True
+    source: str = "local"
 

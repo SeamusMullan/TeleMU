@@ -1,9 +1,4 @@
-"""Lovense LAN API client.
-
-This module follows Lovense's documented developer/LAN flow:
-- Resolve a user's LAN endpoint via `https://api.lovense.com/api/lan/getToys`.
-- Send LAN commands to `https://{domain}:{https_port}/command`.
-"""
+"""Lovense local desktop LAN API client."""
 
 from __future__ import annotations
 
@@ -25,12 +20,14 @@ class LovenseConnection:
 
 
 class LovenseClient:
-    """Client for Lovense developer and LAN APIs."""
+    """Client for Lovense local desktop APIs."""
 
     def __init__(self, *, verify_tls: bool = False, timeout_sec: float = 5.0):
         self.verify_tls = verify_tls
         self.timeout_sec = timeout_sec
         self.connection: LovenseConnection | None = None
+        self.default_domain = "127-0-0-1.lovense.club"
+        self.default_https_port = 30010
 
     def configure(self, domain: str, https_port: int = 30010) -> None:
         self.connection = LovenseConnection(domain=domain.strip(), https_port=https_port)
@@ -50,13 +47,39 @@ class LovenseClient:
             "verify_tls": self.verify_tls,
         }
 
-    async def resolve_lan(self, token: str, uid: str) -> dict:
-        payload = {"token": token, "uid": uid}
-        return await asyncio.to_thread(
-            self._post_json,
-            "https://api.lovense.com/api/lan/getToys",
-            payload,
-        )
+    async def detect_local(self) -> dict:
+        result = await asyncio.to_thread(self._get_json, "https://api.lovense-api.com/api/lan/v2/app")
+        apps = self._extract_apps(result)
+        if apps:
+            app = next((a for a in apps if a.get("online") is True), apps[0])
+            domain = app.get("domain")
+            https_port = app.get("httpsPort", self.default_https_port)
+            if isinstance(domain, str) and domain.strip():
+                port = self.default_https_port
+                if isinstance(https_port, int):
+                    port = https_port
+                elif isinstance(https_port, str) and https_port.isdigit():
+                    port = int(https_port)
+                self.configure(domain.strip(), port)
+                return {
+                    "domain": self.connection.domain,
+                    "https_port": self.connection.https_port,
+                    "online": bool(app.get("online", True)),
+                    "source": "discovery",
+                }
+
+        self.configure(self.default_domain, self.default_https_port)
+        return {
+            "domain": self.connection.domain,
+            "https_port": self.connection.https_port,
+            "online": True,
+            "source": "fallback",
+        }
+
+    async def connect_local(self) -> dict:
+        info = await self.detect_local()
+        await self.get_toys()
+        return info
 
     async def get_toys(self) -> dict:
         return await self._lan_command({"command": "GetToys", "apiVer": 1})
@@ -88,9 +111,14 @@ class LovenseClient:
 
     async def _lan_command(self, payload: dict) -> dict:
         if self.connection is None:
-            raise LovenseClientError("Lovense LAN connection is not configured")
+            await self.detect_local()
         url = f"https://{self.connection.domain}:{self.connection.https_port}/command"
-        return await asyncio.to_thread(self._post_json, url, payload)
+        try:
+            return await asyncio.to_thread(self._post_json, url, payload)
+        except LovenseClientError:
+            await self.detect_local()
+            retry_url = f"https://{self.connection.domain}:{self.connection.https_port}/command"
+            return await asyncio.to_thread(self._post_json, retry_url, payload)
 
     def _post_json(self, url: str, payload: dict) -> dict:
         data = json.dumps(payload).encode("utf-8")
@@ -120,4 +148,35 @@ class LovenseClient:
             raise LovenseClientError(f"Lovense request timed out for {url}") from exc
         except json.JSONDecodeError as exc:
             raise LovenseClientError(f"Lovense returned invalid JSON for {url}") from exc
+
+    def _get_json(self, url: str) -> dict:
+        req = request.Request(url=url, method="GET")
+        context: ssl.SSLContext | None = None
+        if url.startswith("https://") and not self.verify_tls:
+            context = ssl._create_unverified_context()
+        try:
+            with request.urlopen(req, timeout=self.timeout_sec, context=context) as resp:
+                body = resp.read().decode("utf-8")
+                return json.loads(body) if body else {}
+        except error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise LovenseClientError(
+                f"Lovense HTTP {exc.code} for {url}: {detail or exc.reason}"
+            ) from exc
+        except error.URLError as exc:
+            raise LovenseClientError(f"Lovense connection error for {url}: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise LovenseClientError(f"Lovense request timed out for {url}") from exc
+        except json.JSONDecodeError as exc:
+            raise LovenseClientError(f"Lovense returned invalid JSON for {url}") from exc
+
+    def _extract_apps(self, payload: dict) -> list[dict]:
+        if not isinstance(payload, dict):
+            return []
+        data = payload.get("data")
+        if isinstance(data, list):
+            return [x for x in data if isinstance(x, dict)]
+        if isinstance(data, dict):
+            return [data]
+        return []
 
